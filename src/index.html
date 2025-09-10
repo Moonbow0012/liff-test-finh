@@ -4,66 +4,94 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>LIFF + NexIIoT</title>
+
+  <!-- กัน 404 /favicon.ico -->
+  <link rel="icon" href="data:,">
+
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="https://unpkg.com/graphql-ws/umd/graphql-ws.min.js"></script>
+
   <style>
     body { font-family: system-ui, sans-serif; padding: 16px; }
-    .row { display:flex; gap:8px; margin:8px 0; }
+    .row { display:flex; gap:8px; margin:8px 0; flex-wrap: wrap; }
     input,button{ padding:8px 10px; border-radius:8px; border:1px solid #ccc; }
     button.primary{ background:#06c755; color:#fff; border:none; }
-    pre{ background:#f6f6f6; padding:10px; border-radius:8px;}
+    .card { border:1px solid #ddd; border-radius:12px; padding:12px; margin-top:12px; }
+    table { border-collapse: collapse; width: 100%; }
+    td { border-bottom: 1px solid #eee; padding: 6px 4px; }
+    pre{ background:#f6f6f6; padding:10px; border-radius:8px; overflow:auto; }
   </style>
 </head>
 <body>
-  <h3>LIFF + NexIIoT GraphQL</h3>
-
+  <h2>LIFF + NexIIoT GraphQL</h2>
   <div id="me">กำลังโหลด LIFF…</div>
 
-  <div class="row">
-    <input id="u" placeholder="username (email)"/>
-    <input id="p" placeholder="password" type="password"/>
-    <button id="loginBtn" class="primary">Login</button>
-  </div>
-  <div id="loginStatus" style="color:#666">รอสั่ง login…</div>
-
-  <div class="row" style="margin-top:10px">
-    <button id="refreshBtn">Refresh</button>
-    <button id="onBtn" class="primary">relay1 ON</button>
-    <button id="offBtn">relay1 OFF</button>
+  <div class="card">
+    <b>เข้าสู่ระบบ NexIIoT (Password Grant ผ่าน Proxy)</b>
+    <div class="row">
+      <input id="u" placeholder="username (email)"/>
+      <input id="p" placeholder="password" type="password"/>
+      <button id="loginBtn" class="primary">Login</button>
+    </div>
+    <div id="loginStatus" style="color:#666">รอกรอกแล้วกด Login</div>
   </div>
 
-  <pre id="out">—</pre>
+  <div class="card" id="dash" style="display:none">
+    <div class="row">
+      <div><b>Device:</b> <span id="devId"></span></div>
+      <div id="lastUpdate" style="color:#777">—</div>
+    </div>
+    <table id="tbl"><tbody></tbody></table>
+    <div class="row">
+      <button id="refreshBtn">Refresh</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <b>Raw output</b>
+    <pre id="out">—</pre>
+  </div>
 
 <script>
 (async () => {
-  // ===== ปรับค่าตามโปรเจกต์คุณ =====
+  // ← ใส่ LIFF ID "จริง" ของคุณ (ไม่มี <>)
   const LIFF_ID   = '2008085765-YDwJrxy9';
+  // ถ้าเสิร์ฟไฟล์นี้บนโดเมนเดียวกับ Vercel project เดียวกัน ใช้ relative /api ได้เลย
+  const API_BASE  = '/api';
+  // GraphQL WS endpoint (ใช้ตรงเพื่อรับ subscription)
+  const NX_GQL_WS = 'wss://gqlv2.nexiiot.io/graphql';
+  // ใส่ device id ที่ต้องการแสดง/ควบคุม
+  const DEVICE_ID = 'device-1';
 
-  // สำคัญ: ใส่ /api ไว้ใน BASE
-  const API_BASE  = 'https://liff-test-finh.vercel.app/api';
-  // ถ้าไฟล์นี้รันบนโดเมนเดียวกับ API, คุณสามารถใช้แบบ relative ได้:
-  // const API_BASE = '/api';
+  // ฟิลด์ที่อยากโชว์จาก shadow.data (จะโชว์เฉพาะที่มีจริง)
+  const FIELDS = [
+    "Soil_moisture","Soil_temperature","Soil_EC","Soil_pH","Soil_N","Soil_P","Soil_K",
+    "EC","EC_temp","pH","pH_temp","Temp_out","Humi_out","Light_out",
+    "Wind_speed","Wind_direction","Temperature_in","Humidity_in","Light_in","CO2",
+    "relay1","relay2"
+  ];
 
   await liff.init({ liffId: LIFF_ID });
   if (!liff.isLoggedIn()) { liff.login(); return; }
   const prof = await liff.getProfile();
   me.textContent = `สวัสดี, ${prof.displayName}`;
 
-  let accessToken = null;
-  let refreshToken = null;
-  let expAt = 0;
+  // ----- helpers -----
+  function show(o){ out.textContent = typeof o === 'string' ? o : JSON.stringify(o, null, 2); }
 
   async function postJSON(url, payload) {
     const r = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type':'application/json' },
+      method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify(payload)
     });
     const text = await r.text();
     let data; try { data = JSON.parse(text); } catch { throw new Error(`HTTP ${r.status}: ${text.slice(0,120)}`); }
-    if (!r.ok) throw new Error(data.error ? JSON.stringify(data) : text);
+    if (!r.ok || data.error) throw new Error(typeof data === 'string' ? data : JSON.stringify(data));
     return data;
   }
+
+  // ----- token state & helpers -----
+  let accessToken = null, refreshToken = null, expAt = 0;
 
   async function ensureToken() {
     if (!refreshToken) return;
@@ -79,6 +107,7 @@
     return postJSON(`${API_BASE}/gql`, { query, variables, access_token: accessToken });
   }
 
+  // ----- GraphQL docs (ตามที่คุณใช้ใน Dart) -----
   const Q_SHADOW = `
     query Shadow($deviceid: String!) {
       shadow(deviceid: $deviceid) { deviceid data rev modified }
@@ -95,44 +124,78 @@
     }
   `;
 
-  function show(o){ out.textContent = typeof o === 'string' ? o : JSON.stringify(o, null, 2); }
+  // ----- UI render -----
+  function renderData(data) {
+    const tbody = document.querySelector('#tbl tbody');
+    tbody.innerHTML = '';
+    for (const key of FIELDS) {
+      if (data && Object.prototype.hasOwnProperty.call(data, key)) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${key}</td><td>${String(data[key])}</td>`;
+        tbody.appendChild(tr);
+      }
+    }
+  }
 
+  async function refreshShadow() {
+    try {
+      const outData = await gql(Q_SHADOW, { deviceid: DEVICE_ID });
+      const s = outData.shadow;
+      devId.textContent = s?.deviceid || DEVICE_ID;
+      renderData(s?.data || {});
+      lastUpdate.textContent = 'updated: ' + (s?.modified || new Date().toISOString());
+      dash.style.display = 'block';
+      show(outData);
+    } catch (e) {
+      show('ERR ' + e.message);
+    }
+  }
+
+  async function setRelay1(val) {
+    try { await gql(M_WRITE, { deviceid: DEVICE_ID, data: { relay1: val } }); await refreshShadow(); alert('relay1 '+val); }
+    catch(e){ alert('command failed: ' + e.message); }
+  }
+
+  // ----- Events -----
   loginBtn.onclick = async () => {
     try {
       loginStatus.textContent = 'logging in…';
-      const j = await postJSON(`${API_BASE}/auth/login`, { username: u.value.trim(), password: p.value });
+      const j = await postJSON(`${API_BASE}/auth/login`, {
+        username: u.value.trim(),
+        password: p.value
+      });
       accessToken  = j.access_token;
       refreshToken = j.refresh_token;
       expAt        = Date.now() + (j.expires_in - 30) * 1000;
       loginStatus.textContent = 'login OK';
       await refreshShadow();
 
-      // เปิด subscription (ต้องการ Token ใน connectionParams)
+      // เปิด subscription โดยตรง (ต้องส่ง Authorization ใน connectionParams)
       const client = graphqlWs.createClient({
-        url: 'wss://gqlv2.nexiiot.io/graphql',
+        url: NX_GQL_WS,
         connectionParams: { headers: { Authorization: `Bearer ${accessToken}` } }
       });
       client.subscribe(
         { query: SUB_UPDATED, variables: { deviceid: DEVICE_ID } },
         {
-          next: (msg) => show(msg.data),
+          next: (msg) => {
+            const s = msg?.data?.shadowUpdated;
+            if (s?.data) {
+              renderData(s.data);
+              lastUpdate.textContent = 'updated: ' + (s.modified || new Date().toISOString());
+              show(msg.data);
+            }
+          },
           error: (err) => console.error('subscription error', err),
           complete: () => console.log('subscription complete'),
         }
       );
+
     } catch (e) {
       loginStatus.textContent = 'login failed: ' + e.message;
+      show(e.message);
     }
   };
-
-  async function refreshShadow() {
-    try { show(await gql(Q_SHADOW, { deviceid: DEVICE_ID })); }
-    catch(e){ show('ERR ' + e.message); }
-  }
-  async function setRelay1(v) {
-    try { await gql(M_WRITE, { deviceid: DEVICE_ID, data: { relay1: v } }); await refreshShadow(); alert('relay1 '+v); }
-    catch(e){ alert('command failed: ' + e.message); }
-  }
 
   refreshBtn.onclick = refreshShadow;
   onBtn.onclick  = () => setRelay1('on');
