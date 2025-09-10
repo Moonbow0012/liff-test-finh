@@ -1,75 +1,223 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html>
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Document</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>LIFF + NexIIoT</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <!-- graphql-ws UMD -->
+  <script src="https://unpkg.com/graphql-ws/umd/graphql-ws.min.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 16px; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 12px; margin-top: 12px; }
+    table { border-collapse: collapse; width: 100%; }
+    td { border-bottom: 1px solid #eee; padding: 6px 4px; }
+    .row { display: flex; gap: 8px; margin-top: 8px; }
+    input, button { padding: 8px 10px; border-radius: 8px; border: 1px solid #ccc; }
+    button.primary { background: #06c755; color: white; border: none; }
+  </style>
 </head>
 <body>
-  <div>
-    <span id="loading">Loading</span>
-  
-  <div id="lineProfile">
-    <img id="lineImage" width="100px" src="https://cdn.britannica.com/70/234870-050-D4D024BB/Orange-colored-cat-yawns-displaying-teeth.jpg">
-    <div id="lineName">Hello Name</div>
-    <div id="lineUID" >UID: Your UID</div>
+  <h3>LIFF + NexIIoT GraphQL</h3>
 
-      <div>
-      <input id="lineMessage" type="text">
-      <button onclick="sendMessage()">Send Meassage</button>
-      </div>
+  <div id="me">กำลังโหลด LIFF…</div>
 
+  <div class="card" id="loginBox">
+    <b>เข้าสู่ระบบ NexIIoT</b>
+    <div class="row">
+      <input id="u" placeholder="username (email)"/>
+      <input id="p" placeholder="password" type="password"/>
+      <button id="loginBtn" class="primary">Login</button>
     </div>
-    <button id="logout" onclick="logout()">Logout</button>
+    <div id="loginStatus" style="margin-top:6px;color:#555"></div>
   </div>
-    
-  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/versions/2.22.3/sdk.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.11.0/axios.min.js" integrity="sha512-h9644v03pHqrIHThkvXhB2PJ8zf5E9IyVnrSfZg8Yj8k4RsO4zldcQc4Bi9iVLUCCsqNY0b4WXVV4UB+wbWENA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script> 
-    <script>
-      let userId = ''
-    const main = async () => {  
-      await liff.init({ liffId: '2008085765-YDwJrxy9' })
-      if (!liff.isLoggedIn()) {
-        liff.login()
-        return false
-      }
-        const profile = await liff.getProfile()
 
-        loading.style.display = 'none'
+  <div class="card" id="dash" style="display:none">
+    <div><b>Device:</b> <span id="devId"></span></div>
+    <table id="tbl"><tbody></tbody></table>
+    <div class="row">
+      <button id="refreshBtn">Refresh</button>
+      <button id="onBtn" class="primary">relay1 ON</button>
+      <button id="offBtn">relay1 OFF</button>
+    </div>
+    <div style="margin-top:8px;color:#777" id="lastUpdate">—</div>
+  </div>
 
-        lineImage.src = profile.pictureUrl
-        lineName.textContent = `Hello ${profile.displayName}`
-        lineUID.textContent =`UID: ${profile.userId}`  
-        lineProfile.style.display = 'block'
+  <script>
+  (async () => {
+    // ====== ปรับค่าให้ตรงโปรเจกต์คุณ ======
+    const LIFF_ID     = '2008085765-YDwJrxy9';
+    const API_BASE    = 'https://liff-test-finh.vercel.app/'; // เช่น https://xxx.vercel.app หรือ Cloud Functions
+    const NX_GQL_HTTP = 'https://gqlv2.nexiiot.io/graphql';
+    const NX_GQL_WS   = 'wss://gqlv2.nexiiot.io/graphql';   
 
-        userId = profile.userId
-      } 
+    // Fields ที่คุณให้มา (จะโชว์เฉพาะที่มีอยู่ใน shadow.data)
+    const FIELDS = [
+      "Soil_moisture","Soil_temperature","Soil_EC","Soil_pH","Soil_N","Soil_P","Soil_K",
+      "EC","EC_temp","pH","pH_temp","Temp_out","Humi_out","Light_out",
+      "Wind_speed","Wind_direction","Temperature_in","Humidity_in","Light_in","CO2",
+      "relay1","relay2"
+    ];
 
-      const logout = async () => {
-        liff.logout() 
-        window.location.reload()
-      }
+    // ====== LIFF login ======
+    await liff.init({ liffId: LIFF_ID });
+    if (!liff.isLoggedIn()) { liff.login(); return; }
+    const profile = await liff.getProfile();
+    me.textContent = `สวัสดี, ${profile.displayName}`;
 
-      const sendMessage = async () => {
-        try {
-          if (!lineMessage.value) {
-            throw new Error('message not found')
-          } 
-          const response = await axios.post(
-            'https://4734961ec9ea.ngrok-free.app/send-message',
-            {
-              userId,
-              messages: lineMessage.value
-            }
-          )
+    // ====== Token state ======
+    let accessToken = null;
+    let refreshToken = null;
+    let expAt = 0;
 
-          console.log('response', response.data)
-        } catch (error) {
-          console.log('error', error)
+    async function ensureToken() {
+      if (!refreshToken) return;
+      if (Date.now() < expAt) return;
+      const r = await fetch(`${API_BASE}/auth/refresh`, {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken })
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error('refresh failed: ' + JSON.stringify(j));
+      accessToken  = j.access_token;
+      refreshToken = j.refresh_token || refreshToken;
+      expAt        = Date.now() + (j.expires_in - 30) * 1000;
+    }
+
+    // ====== GraphQL helper ผ่าน proxy HTTP ======
+    async function gql(query, variables) {
+      await ensureToken();
+      const r = await fetch(`${API_BASE}/gql`, {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({ query, variables, access_token: accessToken })
+      });
+      const j = await r.json();
+      if (!r.ok || j.errors) throw new Error(JSON.stringify(j.errors || j));
+      return j.data;
+    }
+
+    // ====== Queries/Mutations เหมือนที่คุณใช้ใน Dart ======
+    const Q_SHADOW = `
+      query Shadow($deviceid: String!) {
+        shadow(deviceid: $deviceid) {
+          deviceid
+          data
+          rev
+          modified
         }
-        console.log(userId, lineMessage.value)
       }
-    main() 
+    `;
+    const M_WRITE = `
+      mutation WriteShadow($deviceid: String!, $data: JSON!) {
+        writeShadow(deviceid: $deviceid, data: $data) {
+          deviceid
+          data
+          rev
+          modified
+        }
+      }
+    `;
+    const SUB_UPDATED = `
+      subscription ShadowUpdates($deviceid: String!) {
+        shadowUpdated(deviceid: $deviceid) {
+          deviceid
+          data
+          rev
+          modified
+        }
+      }
+    `;
+
+    // ====== Render ======
+    function renderData(data) {
+      const tbody = document.querySelector('#tbl tbody');
+      tbody.innerHTML = '';
+      for (const key of FIELDS) {
+        if (data && Object.prototype.hasOwnProperty.call(data, key)) {
+          const tr = document.createElement('tr');
+          const td1 = document.createElement('td');
+          const td2 = document.createElement('td');
+          td1.textContent = key;
+          td2.textContent = String(data[key]);
+          tr.appendChild(td1); tr.appendChild(td2);
+          tbody.appendChild(tr);
+        }
+      }
+    }
+
+    async function refreshShadow() {
+      try {
+        const out = await gql(Q_SHADOW, { deviceid: DEVICE_ID });
+        const s = out.shadow;
+        devId.textContent = s?.deviceid || DEVICE_ID;
+        renderData(s?.data || {});
+        lastUpdate.textContent = 'updated: ' + (s?.modified || new Date().toISOString());
+        dash.style.display = 'block';
+      } catch (e) {
+        lastUpdate.textContent = 'ERR ' + e.message;
+      }
+    }
+
+    async function setRelay1(onOff) {
+      try {
+        await gql(M_WRITE, { deviceid: DEVICE_ID, data: { relay1: onOff } });
+        await refreshShadow();
+        alert('relay1 ' + onOff);
+      } catch (e) {
+        alert('command failed: ' + e.message);
+      }
+    }
+
+    // ====== Login Box actions ======
+    loginBtn.addEventListener('click', async () => {
+      try {
+        loginStatus.textContent = 'logging in…';
+        const r = await fetch(`${API_BASE}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type':'application/json' },
+          body: JSON.stringify({ username: u.value.trim(), password: p.value })
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(JSON.stringify(j));
+        accessToken  = j.access_token;
+        refreshToken = j.refresh_token;
+        expAt        = Date.now() + (j.expires_in - 30) * 1000;
+        loginStatus.textContent = 'login OK';
+        await refreshShadow();
+
+        // ====== เปิด subscription ตรงไปที่ wss (ต้องส่ง Authorization ใน connectionParams) ======
+        const client = graphqlWs.createClient({
+          url: NX_GQL_WS,
+          connectionParams: {
+            headers: { Authorization: `Bearer ${accessToken}` }
+          }
+        });
+
+        client.subscribe(
+          { query: SUB_UPDATED, variables: { deviceid: DEVICE_ID } },
+          {
+            next: (msg) => {
+              const s = msg?.data?.shadowUpdated;
+              if (s?.data) {
+                renderData(s.data);
+                lastUpdate.textContent = 'updated: ' + (s.modified || new Date().toISOString());
+              }
+            },
+            error: (err) => console.error('subscription error', err),
+            complete: () => console.log('subscription complete'),
+          }
+        );
+
+        // ปุ่มต่าง ๆ
+        refreshBtn.onclick = () => refreshShadow();
+        onBtn.onclick  = () => setRelay1('on');
+        offBtn.onclick = () => setRelay1('off');
+      } catch (e) {
+        loginStatus.textContent = 'login failed: ' + (e.message || e);
+      }
+    });
+  })();
   </script>
 </body>
 </html>
