@@ -4,7 +4,7 @@ function setCORS(req, res) {
   res.setHeader('Access-Control-Allow-Origin', allowed.includes(origin) ? origin : allowed[1]);
   res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 }
 
 module.exports = async (req, res) => {
@@ -13,24 +13,43 @@ module.exports = async (req, res) => {
     if (req.method === 'OPTIONS') return res.status(204).end();
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
+    // --- ตรวจ ENV ครบไหม ---
+    const clientId = process.env.OAUTH_CLIENT_ID;
+    const clientSecret = process.env.OAUTH_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      return res.status(500).json({
+        error: 'server_misconfigured',
+        details: {
+          OAUTH_CLIENT_ID: !!clientId,
+          OAUTH_CLIENT_SECRET: !!clientSecret
+        }
+      });
+    }
+
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
     const { username, password } = body || {};
     if (!username || !password) return res.status(400).json({ error: 'username & password required' });
+
+    // --- ใช้ Basic Auth ตาม RFC6749 ---
+    const basic = 'Basic ' + Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
     const params = new URLSearchParams();
     params.set('grant_type', 'password');
     params.set('username', username);
     params.set('password', password);
-    params.set('client_id', process.env.OAUTH_CLIENT_ID);
-    params.set('client_secret', process.env.OAUTH_CLIENT_SECRET);
 
     const r = await fetch(process.env.OAUTH_TOKEN_URL || 'https://auth.nexiiot.io/oauth/token', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: params.toString(),
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json',
+        'Authorization': basic
+      },
+      body: params.toString()
     });
 
     const text = await r.text();
+    // ส่งสถานะ/บอดี้ upstream กลับไปตรง ๆ เพื่อดีบักได้
     res.setHeader('Content-Type', r.headers.get('content-type') || 'application/json');
     return res.status(r.status).send(text);
   } catch (e) {
