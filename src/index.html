@@ -56,7 +56,7 @@
   const LIFF_ID   = '2008085765-YDwJrxy9';          // <-- ใส่ของจริง (เช่น 2008085765-XXXXXX)
   const API_BASE  = '/api';                   // เรียกฟังก์ชันบนโดเมนเดียวกัน
   const NX_GQL_WS = 'wss://gqlv2.nexiiot.io/graphql';
-  const DEVICE_ID = 'device-1';
+  const DEVICE_ID = '20b1b470-a0b4-412a-890d-fa87380183c6';
 
   // ==== จับ DOM ให้ครบ (แก้ onBtn is not defined) ====
   const $ = (id) => document.getElementById(id);
@@ -140,7 +140,7 @@
 
       const client = graphqlWs.createClient({
         url: NX_GQL_WS,
-        connectionParams: { headers: { Authorization: `Bearer ${accessToken}` } }
+        connectionParams: { Authorization: `Bearer ${accessToken}` }
       });
       client.subscribe(
         { query: SUB_UPD, variables: { deviceid: DEVICE_ID } },
