@@ -1,5 +1,6 @@
 {
-    "name": "liff-finh-test",
+    "name": "liff-nexiiot-src",
+    "private": true,
     "version": "1.0.0",
     "description": "",
     "main": "index.js",
