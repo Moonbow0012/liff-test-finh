@@ -1,4 +1,4 @@
-const { verifyLineIdToken } = require('./_lib/auth');
+const auth = require('./_lib/auth');            // ⬅️ ไม่ destructure
 const { getServiceAuthHeader } = require('./_lib/nxToken');
 
 function isAllowed(deviceId) {
@@ -9,7 +9,7 @@ function isAllowed(deviceId) {
         '20b1b470-a0b4-412a-890d-fa87380183c6',
         '3e3fe3eb-7677-4585-bd02-fb4b53793a33'
       ];
-  return ids.includes(deviceId);
+  return !deviceId || ids.includes(deviceId);
 }
 
 module.exports = async (req, res) => {
@@ -17,26 +17,20 @@ module.exports = async (req, res) => {
     if (req.method === 'OPTIONS') return res.status(204).end();
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-    // 1) ยืนยันตัวตนด้วย LINE idToken
     const idToken = req.headers['x-line-id-token'];
-    await verifyLineIdToken(idToken, process.env.LINE_LOGIN_CHANNEL_ID);
+    await auth.verifyLineIdToken(idToken, process.env.LINE_LOGIN_CHANNEL_ID);
 
-    // 2) รับ GraphQL query/variables จาก client (ไม่รับ access_token แล้ว)
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
     const { query, variables } = body || {};
     if (!query) return res.status(400).json({ error: 'query required' });
 
-    // 3) บังคับเฉพาะ device ที่อนุญาต (กันยิงข้ามฟาร์ม)
     const deviceId = variables && variables.deviceid;
-    if (deviceId && !isAllowed(deviceId)) {
-      return res.status(403).json({ error: 'forbidden device' });
-    }
+    if (!isAllowed(deviceId)) return res.status(403).json({ error: 'forbidden device' });
 
-    // 4) ใช้ service token ของระบบ proxy ไป NexIIoT
-    const auth = await getServiceAuthHeader();
+    const authz = await getServiceAuthHeader();
     const r = await fetch(process.env.NX_GRAPHQL_URL || 'https://gqlv2.nexiiot.io/graphql', {
       method: 'POST',
-      headers: { 'Content-Type':'application/json', 'Authorization': auth },
+      headers: { 'Content-Type': 'application/json', 'Authorization': authz },
       body: JSON.stringify({ query, variables })
     });
 
