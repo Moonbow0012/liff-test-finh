@@ -1,125 +1,102 @@
-<!doctype html>
-<html lang="th">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>LIFF – NexIIoT Dashboard</title>
-  <!-- กัน 404 favicon -->
-  <link rel="icon" href="data:," />
-  <!-- โหลด LIFF SDK -->
-  <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <style>
-    body{font-family:system-ui,Segoe UI,Arial,sans-serif;padding:16px}
-    .row{display:flex;gap:8px;align-items:center;margin:8px 0}
-    select,button{padding:8px}
-    pre{background:#f6f6f7;border:1px solid #e5e7eb;padding:12px;border-radius:8px;overflow:auto}
-    .muted{color:#666}
-  </style>
-</head>
-<body>
-  <div id="app">
-    <div class="row"><b>Loading…</b></div>
-  </div>
+<script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script defer>
+window.addEventListener('DOMContentLoaded', async () => {
+  const LIFF_ID = '2008085765-YDwJrxy9'; // ใส่ของจริง
 
-  <script defer>
-  window.addEventListener('DOMContentLoaded', async () => {
-    const LIFF_ID = '2008085765-YDwJrxy9'; // ← ใส่ LIFF ID จริงของคุณ
+  const $ = (id) => document.getElementById(id);
+  const root = document.getElementById('app') || document.body;
 
-    const $ = (id) => document.getElementById(id);
-    const root = $('app');
+  const showError = (err) => {
+    console.error(err);
+    const msg = (typeof err === 'string') ? err : (err?.message || JSON.stringify(err));
+    root.insertAdjacentHTML('beforeend', `<pre style="color:#b91c1c">ERROR: ${msg}</pre>`);
+  };
 
-    const showError = (err) => {
-      console.error(err);
-      root.innerHTML = `<pre style="color:#b91c1c;white-space:pre-wrap">ERROR: ${err?.message||err}</pre>`;
-    };
+  try {
+    await liff.init({ liffId: LIFF_ID });
+    if (!liff.isLoggedIn()) { liff.login(); return; }
 
-    try {
-      if (!window.liff) throw new Error('LIFF SDK not loaded');
+    // 1) ถ้ามี ?code=... ใน URL ⇒ แลกเป็น token ผ่าน backend
+    let idToken = null;
+    const qp = new URLSearchParams(location.search);
+    const code = qp.get('code');
+    const liffRedirectUri = qp.get('liffRedirectUri'); // LIFF ใส่มาให้แล้ว
+    const redirectUri = liffRedirectUri ? decodeURIComponent(liffRedirectUri)
+                                        : (location.origin + location.pathname);
 
-      await liff.init({ liffId: LIFF_ID });
-      if (!liff.isLoggedIn()) { liff.login(); return; }
+    if (code) {
+      const r = await fetch('/api/line/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, redirect_uri: redirectUri })
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(JSON.stringify(data));
+      idToken = data.id_token || null;
 
-      const idToken = liff.getIDToken();
-
-      async function authedGet(url){
-        const r = await fetch(url, { headers: { 'x-line-id-token': idToken }});
-        const t = await r.text();
-        try { var j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
-        if (!r.ok || j.error) throw new Error(j.error || t);
-        return j;
-      }
-      async function authedPost(url, body){
-        const r = await fetch(url, {
-          method:'POST',
-          headers: { 'Content-Type':'application/json','x-line-id-token': idToken },
-          body: JSON.stringify(body||{})
-        });
-        const t = await r.text();
-        try { var j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
-        if (!r.ok || j.errors) throw new Error(j.errors ? JSON.stringify(j.errors) : t);
-        return j;
-      }
-
-      // UI โครง
-      root.innerHTML = `
-        <div class="row">
-          <label>Device:
-            <select id="deviceSelect"></select>
-          </label>
-          <button id="refreshBtn">Refresh</button>
-          <span id="status" class="muted"></span>
-        </div>
-        <pre id="out">—</pre>
-      `;
-
-      const sel = $('deviceSelect');
-      const out = $('out');
-      const statusEl = $('status');
-
-      // โหลดรายการอุปกรณ์จาก backend (ที่อนุญาตไว้)
-      const { devices } = await authedGet('/api/devices');
-      if (!devices || !devices.length) {
-        out.textContent = 'No devices allowed. ติดต่อผู้ดูแลระบบ';
-        return;
-      }
-      for (const d of devices) {
-        const op = document.createElement('option');
-        op.value = d.deviceId;
-        op.textContent = d.name || d.deviceId;
-        sel.appendChild(op);
-      }
-      // จำ device ตัวที่เลือก
-      const saved = localStorage.getItem('deviceId');
-      if (saved && [...sel.options].some(o => o.value === saved)) sel.value = saved;
-      sel.onchange = () => localStorage.setItem('deviceId', sel.value);
-
-      // GraphQL query
-      const Q_SHADOW = `
-        query($deviceid:String!){
-          shadow(deviceid:$deviceid){
-            deviceid rev modified data
-          }
-        }`;
-
-      async function refresh(){
-        try {
-          statusEl.textContent = 'Loading…';
-          const variables = { deviceid: sel.value };
-          const r = await authedPost('/api/gql', { query: Q_SHADOW, variables });
-          out.textContent = JSON.stringify(r.data, null, 2);
-          statusEl.textContent = 'Updated: ' + new Date().toISOString();
-        } catch (e) {
-          statusEl.textContent = 'Failed';
-          showError(e);
-        }
-      }
-
-      $('refreshBtn').onclick = refresh;
-      await refresh();
-    } catch (e) {
-      showError(e);
+      // เก็บไว้ใช้ต่อ & เคลียร์ query string ให้อ่านง่าย
+      if (idToken) sessionStorage.setItem('line_id_token', idToken);
+      history.replaceState({}, '', redirectUri);
     }
-  });
-  </script>
-</body>
-</html>
+
+    // 2) ถ้าไม่มี code หรือยังไม่มี idToken ให้ลองจาก LIFF โดยตรง / sessionStorage
+    idToken = idToken || sessionStorage.getItem('line_id_token') || liff.getIDToken();
+    if (!idToken) throw new Error('No ID token. Check LINE Login scopes (need "openid").');
+
+    async function authedGet(url) {
+      const r = await fetch(url, { headers: { 'x-line-id-token': idToken }});
+      const t = await r.text();
+      let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
+      if (!r.ok || j.error) throw new Error(j.error || t);
+      return j;
+    }
+    async function authedPost(url, body) {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json', 'x-line-id-token': idToken },
+        body: JSON.stringify(body || {})
+      });
+      const t = await r.text();
+      let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
+      if (!r.ok || j.errors) throw new Error(j.errors ? JSON.stringify(j.errors) : t);
+      return j;
+    }
+
+    // ===== UI อย่างง่าย =====
+    root.innerHTML = `
+      <div class="row">
+        <label>Device: <select id="deviceSelect"></select></label>
+        <button id="refreshBtn">Refresh</button>
+        <span id="status" class="muted"></span>
+      </div>
+      <pre id="out">—</pre>
+    `;
+    const sel = $('deviceSelect'), out = $('out'), statusEl = $('status');
+
+    // โหลดรายการอุปกรณ์ที่อนุญาตจาก backend
+    const { devices } = await authedGet('/api/devices');
+    devices.forEach(d => {
+      const op = document.createElement('option');
+      op.value = d.deviceId; op.textContent = d.name || d.deviceId;
+      sel.appendChild(op);
+    });
+    const saved = localStorage.getItem('deviceId');
+    if (saved && [...sel.options].some(o => o.value === saved)) sel.value = saved;
+    sel.onchange = () => localStorage.setItem('deviceId', sel.value);
+
+    const Q_SHADOW = `query($deviceid:String!){ shadow(deviceid:$deviceid){ deviceid rev modified data } }`;
+
+    async function refresh() {
+      try {
+        statusEl.textContent = 'Loading…';
+        const r = await authedPost('/api/gql', { query: Q_SHADOW, variables: { deviceid: sel.value } });
+        out.textContent = JSON.stringify(r.data, null, 2);
+        statusEl.textContent = 'Updated: ' + new Date().toISOString();
+      } catch (e) { statusEl.textContent = 'Failed'; showError(e); }
+    }
+
+    $('refreshBtn').onclick = refresh;
+    await refresh();
+  } catch (e) { showError(e); }
+});
+</script>
