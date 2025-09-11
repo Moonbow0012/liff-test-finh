@@ -1,7 +1,7 @@
 <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script defer>
 window.addEventListener('DOMContentLoaded', async () => {
-  const LIFF_ID = '2008085765-YDwJrxy9'; // ใส่ของจริง
+  const LIFF_ID = 'YOUR_LIFF_ID'; // ← ใส่ของจริง
 
   const $ = (id) => document.getElementById(id);
   const root = document.getElementById('app') || document.body;
@@ -14,15 +14,19 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   try {
     await liff.init({ liffId: LIFF_ID });
-    if (!liff.isLoggedIn()) { liff.login(); return; }
 
-    // 1) ถ้ามี ?code=... ใน URL ⇒ แลกเป็น token ผ่าน backend
-    let idToken = null;
-    const qp = new URLSearchParams(location.search);
-    const code = qp.get('code');
-    const liffRedirectUri = qp.get('liffRedirectUri'); // LIFF ใส่มาให้แล้ว
-    const redirectUri = liffRedirectUri ? decodeURIComponent(liffRedirectUri)
-                                        : (location.origin + location.pathname);
+    // แนะนำขอ scope ให้ครบตั้งแต่แรก (จะถาม consent ครั้งเดียว)
+    if (!liff.isLoggedIn()) {
+      liff.login({ scope: ['openid','profile','email'], prompt: 'consent' });
+      return;
+    }
+
+    // --- แลก ?code=... เป็น token ผ่าน backend (ครั้งที่ถูก redirect กลับมา) ---
+    const qs = new URLSearchParams(location.search);
+    const code = qs.get('code');
+    const redirectUri = qs.get('liffRedirectUri')
+      ? decodeURIComponent(qs.get('liffRedirectUri'))
+      : (location.origin + location.pathname);
 
     if (code) {
       const r = await fetch('/api/line/token', {
@@ -31,35 +35,43 @@ window.addEventListener('DOMContentLoaded', async () => {
         body: JSON.stringify({ code, redirect_uri: redirectUri })
       });
       const data = await r.json();
-      if (!r.ok) throw new Error(JSON.stringify(data));
-      idToken = data.id_token || null;
+      if (!r.ok) throw new Error(data.error || JSON.stringify(data));
 
-      // เก็บไว้ใช้ต่อ & เคลียร์ query string ให้อ่านง่าย
-      // หลังเรียก /api/line/token ได้ data กลับมา
-      if (data.id_token)  sessionStorage.setItem('line_id_token', data.id_token);
+      // เก็บ token ไว้ใช้ซ้ำ
+      if (data.id_token)     sessionStorage.setItem('line_id_token', data.id_token);
       if (data.access_token) sessionStorage.setItem('line_access_token', data.access_token);
 
+      // ล้าง query string ให้อ่านง่ายและกันแลกซ้ำ
+      history.replaceState({}, '', redirectUri);
     }
 
-    // 2) ถ้าไม่มี code หรือยังไม่มี idToken ให้ลองจาก LIFF โดยตรง / sessionStorage
-    idToken = idToken || sessionStorage.getItem('line_id_token') || liff.getIDToken();
-    if (!idToken) throw new Error('No ID token. Check LINE Login scopes (need "openid").');
+    // --- ดึง token ที่จะใช้ยิง backend ---
+    const storedIdToken = sessionStorage.getItem('line_id_token') || liff.getIDToken();
+    const storedAccess  = sessionStorage.getItem('line_access_token') || liff.getAccessToken();
+
+    function buildAuthHeaders() {
+      const h = { 'Content-Type': 'application/json' };
+      // ใช้ id_token ก่อนถ้ามี (ต้องเป็น JWT มี '.')
+      if (storedIdToken && storedIdToken.includes('.')) {
+        h['x-line-id-token'] = storedIdToken;
+      } else if (storedAccess) {
+        // Fallback: ใช้ access token (ต้องมี scope profile)
+        h['x-line-access-token'] = storedAccess;
+      } else {
+        throw new Error('No LINE token available. Please login again.');
+      }
+      return h;
+    }
 
     async function authedGet(url) {
-      const r = await fetch(url, { headers: { 'x-line-id-token': idToken }});
-      const t = await r.text();
-      let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
+      const r = await fetch(url, { headers: buildAuthHeaders() });
+      const t = await r.text(); let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
       if (!r.ok || j.error) throw new Error(j.error || t);
       return j;
     }
     async function authedPost(url, body) {
-      const r = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type':'application/json', 'x-line-id-token': idToken },
-        body: JSON.stringify(body || {})
-      });
-      const t = await r.text();
-      let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
+      const r = await fetch(url, { method:'POST', headers: buildAuthHeaders(), body: JSON.stringify(body||{}) });
+      const t = await r.text(); let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
       if (!r.ok || j.errors) throw new Error(j.errors ? JSON.stringify(j.errors) : t);
       return j;
     }
@@ -99,6 +111,8 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     $('refreshBtn').onclick = refresh;
     await refresh();
-  } catch (e) { showError(e); }
+  } catch (e) {
+    showError(e);
+  }
 });
 </script>
