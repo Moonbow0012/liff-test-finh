@@ -35,8 +35,10 @@ window.addEventListener('DOMContentLoaded', async () => {
       idToken = data.id_token || null;
 
       // เก็บไว้ใช้ต่อ & เคลียร์ query string ให้อ่านง่าย
-      if (idToken) sessionStorage.setItem('line_id_token', idToken);
-      history.replaceState({}, '', redirectUri);
+      // หลังเรียก /api/line/token ได้ data กลับมา
+      if (data.id_token)  sessionStorage.setItem('line_id_token', data.id_token);
+      if (data.access_token) sessionStorage.setItem('line_access_token', data.access_token);
+
     }
 
     // 2) ถ้าไม่มี code หรือยังไม่มี idToken ให้ลองจาก LIFF โดยตรง / sessionStorage

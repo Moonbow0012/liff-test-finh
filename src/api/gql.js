@@ -1,4 +1,4 @@
-const auth = require('./_lib/auth');            // ⬅️ ไม่ destructure
+const auth = require('./_lib/auth');
 const { getServiceAuthHeader } = require('./_lib/nxToken');
 
 function isAllowed(deviceId) {
@@ -17,8 +17,8 @@ module.exports = async (req, res) => {
     if (req.method === 'OPTIONS') return res.status(204).end();
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-    const idToken = req.headers['x-line-id-token'];
-    await auth.verifyLineIdToken(idToken, process.env.LINE_LOGIN_CHANNEL_ID);
+    // ✅ ยอมรับทั้ง id_token และ access_token
+    await auth.verifyFromHeaders(req);
 
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
     const { query, variables } = body || {};
@@ -30,10 +30,9 @@ module.exports = async (req, res) => {
     const authz = await getServiceAuthHeader();
     const r = await fetch(process.env.NX_GRAPHQL_URL || 'https://gqlv2.nexiiot.io/graphql', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': authz },
+      headers: { 'Content-Type':'application/json', 'Authorization': authz },
       body: JSON.stringify({ query, variables })
     });
-
     const text = await r.text();
     res.setHeader('Content-Type', r.headers.get('content-type') || 'application/json');
     return res.status(r.status).send(text);

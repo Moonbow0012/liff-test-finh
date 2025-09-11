@@ -1,4 +1,4 @@
-const auth = require('./_lib/auth'); // ⬅️ ไม่ destructure
+const auth = require('./_lib/auth');
 
 function allowedList() {
   const env = (process.env.ALLOWED_DEVICE_IDS || '').trim();
@@ -14,11 +14,9 @@ function allowedList() {
 module.exports = async (req, res) => {
   try {
     if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
-
-    const idToken = req.headers['x-line-id-token'];
-    await auth.verifyLineIdToken(idToken, process.env.LINE_LOGIN_CHANNEL_ID);
-
-    return res.status(200).json({ devices: allowedList() });
+    // ✅ ยอมรับทั้ง id_token และ access_token
+    const lineUserId = await auth.verifyFromHeaders(req);
+    return res.status(200).json({ lineUserId, devices: allowedList() });
   } catch (e) {
     return res.status(401).json({ error: e.message || 'unauthorized' });
   }
