@@ -1,7 +1,8 @@
 <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script defer>
 window.addEventListener('DOMContentLoaded', async () => {
-  const LIFF_ID = '2008085765-YDwJrxy9'; // ← ใส่ของจริง
+  const LIFF_ID = '2008085765-YDwJrxy9'; 
+  const FIREBASE_PROGRESS_URL = 'https://getprogress-iyipepekja-uc.a.run.app';
 
   const $ = (id) => document.getElementById(id);
   const root = document.getElementById('app') || document.body;
@@ -15,7 +16,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   try {
     await liff.init({ liffId: LIFF_ID });
 
-    // แนะนำขอ scope ให้ครบตั้งแต่แรก (จะถาม consent ครั้งเดียว)
+    // ขอ scope ให้ครบ (ครั้งเดียว)
     if (!liff.isLoggedIn()) {
       liff.login({ scope: ['openid','profile','email'], prompt: 'consent' });
       return;
@@ -37,25 +38,21 @@ window.addEventListener('DOMContentLoaded', async () => {
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || JSON.stringify(data));
 
-      // เก็บ token ไว้ใช้ซ้ำ
       if (data.id_token)     sessionStorage.setItem('line_id_token', data.id_token);
       if (data.access_token) sessionStorage.setItem('line_access_token', data.access_token);
 
-      // ล้าง query string ให้อ่านง่ายและกันแลกซ้ำ
       history.replaceState({}, '', redirectUri);
     }
 
-    // --- ดึง token ที่จะใช้ยิง backend ---
+    // --- ดึง token ที่จะใช้ยิง backend /api/* ---
     const storedIdToken = sessionStorage.getItem('line_id_token') || liff.getIDToken();
     const storedAccess  = sessionStorage.getItem('line_access_token') || liff.getAccessToken();
 
     function buildAuthHeaders() {
       const h = { 'Content-Type': 'application/json' };
-      // ใช้ id_token ก่อนถ้ามี (ต้องเป็น JWT มี '.')
       if (storedIdToken && storedIdToken.includes('.')) {
         h['x-line-id-token'] = storedIdToken;
       } else if (storedAccess) {
-        // Fallback: ใช้ access token (ต้องมี scope profile)
         h['x-line-access-token'] = storedAccess;
       } else {
         throw new Error('No LINE token available. Please login again.');
@@ -76,16 +73,48 @@ window.addEventListener('DOMContentLoaded', async () => {
       return j;
     }
 
-    // ===== UI อย่างง่าย =====
+    // ===== UI =====
     root.innerHTML = `
+      <style>
+        .row { display:flex; gap:.5rem; align-items:center; margin:8px 0; flex-wrap:wrap; }
+        .muted { color:#6b7280; font-size:.9rem; }
+        .card { border:1px solid #e5e7eb; border-radius:12px; padding:12px; box-shadow:0 1px 2px rgba(0,0,0,.05); }
+        .progress-wrap{ display:flex; align-items:center; gap:8px; }
+        .bar{ flex:1; height:10px; background:#e5e7eb; border-radius:8px; overflow:hidden; }
+        .bar>span{ display:block; height:100%; width:0%; background:#10b981; transition:width .3s; }
+        .level{ font-weight:700; }
+        .good { color:#10b981; font-weight:600; }
+        .bad  { color:#ef4444; font-weight:600; }
+        pre { background:#0b1020; color:#cbd5e1; padding:12px; border-radius:8px; overflow:auto; }
+      </style>
+
       <div class="row">
         <label>Device: <select id="deviceSelect"></select></label>
         <button id="refreshBtn">Refresh</button>
         <span id="status" class="muted"></span>
       </div>
+
+      <div class="card" id="growthCard">
+        <div class="row">
+          <div class="progress-wrap" style="flex:1;">
+            <div class="bar"><span id="growthBar"></span></div>
+            <div><span id="growthPct">—</span>%</div>
+          </div>
+          <div>Level: <span id="growthLevel" class="level">—</span></div>
+        </div>
+        <div class="row muted">
+          <div>Good now: <span id="growthGood">—</span></div>
+          <div>Updated: <span id="growthUpdated">—</span></div>
+        </div>
+      </div>
+
       <pre id="out">—</pre>
     `;
+
     const sel = $('deviceSelect'), out = $('out'), statusEl = $('status');
+    const growthBar = $('growthBar'), growthPct = $('growthPct'),
+          growthLevel = $('growthLevel'), growthGood = $('growthGood'),
+          growthUpdated = $('growthUpdated');
 
     // โหลดรายการอุปกรณ์ที่อนุญาตจาก backend
     const { devices } = await authedGet('/api/devices');
@@ -96,8 +125,13 @@ window.addEventListener('DOMContentLoaded', async () => {
     });
     const saved = localStorage.getItem('deviceId');
     if (saved && [...sel.options].some(o => o.value === saved)) sel.value = saved;
-    sel.onchange = () => localStorage.setItem('deviceId', sel.value);
+    sel.onchange = async () => {
+      localStorage.setItem('deviceId', sel.value);
+      await refresh();   // refresh shadow
+      await loadGrowth(); // refresh % & Level
+    };
 
+    // GraphQL query เผื่อ debug ดู shadow
     const Q_SHADOW = `query($deviceid:String!){ shadow(deviceid:$deviceid){ deviceid rev modified data } }`;
 
     async function refresh() {
@@ -109,8 +143,48 @@ window.addEventListener('DOMContentLoaded', async () => {
       } catch (e) { statusEl.textContent = 'Failed'; showError(e); }
     }
 
-    $('refreshBtn').onclick = refresh;
+    // === โหลด % & Level จาก Firebase Functions ===
+    async function loadGrowth() {
+      try {
+        const url = `${FIREBASE_PROGRESS_URL}?deviceId=${encodeURIComponent(sel.value)}`;
+        const r = await fetch(url);
+        const data = await r.json();
+        if (!r.ok || data.error) throw new Error(data.error || JSON.stringify(data));
+
+        const pct = typeof data.percent === 'number' ? Math.max(0, Math.min(100, data.percent)) : null;
+        const lvl = data.level || '—';
+        const good = !!data.goodNow;
+        const updated = data.updatedAt? (data.updatedAt._seconds
+                          ? new Date(data.updatedAt._seconds * 1000).toISOString()
+                          : String(data.updatedAt))
+                          : '—';
+
+        growthPct.textContent = pct != null ? pct.toFixed(1) : '—';
+        growthBar.style.width = pct != null ? `${pct}%` : '0%';
+        growthLevel.textContent = lvl;
+        growthGood.textContent = good ? 'YES' : 'NO';
+        growthGood.className = good ? 'good' : 'bad';
+        growthUpdated.textContent = updated;
+      } catch (e) {
+        growthPct.textContent = '—';
+        growthBar.style.width = '0%';
+        growthLevel.textContent = '—';
+        growthGood.textContent = '—';
+        growthGood.className = '';
+        growthUpdated.textContent = '—';
+        showError(e);
+      }
+    }
+
+    $('refreshBtn').onclick = async () => { await refresh(); await loadGrowth(); };
+
+    // เริ่มต้น
     await refresh();
+    await loadGrowth();
+
+    // ออปชัน: รีเฟรช %/Level อัตโนมัติทุก 60 วินาที
+    setInterval(loadGrowth, 60000);
+
   } catch (e) {
     showError(e);
   }
