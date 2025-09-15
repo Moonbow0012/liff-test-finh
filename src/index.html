@@ -4,20 +4,76 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>FINH LIFF</title>
-
-    <!-- กันเบราว์เซอร์ยิง /favicon.ico แล้ว 404 -->
     <link rel="icon" href="data:,">
-
-    <!-- โหลดธีมภายนอก (เวอร์ชันพารามฯ ช่วย bust cache เวลาอัปเดต) -->
     <link rel="preload" as="style" href="/finh-theme.css?v=1">
     <link rel="stylesheet" href="/finh-theme.css?v=1">
-
-    <!-- LIFF SDK -->
     <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
   </head>
   <body>
     <div id="app" class="container">
-      <div class="card">Loading…</div>
+      <div class="card user">
+        <img id="userAvatar" class="avatar" alt="avatar">
+        <div>
+          <div id="userName" style="font-weight:700">—</div>
+          <div class="muted">ID: <span id="userId" class="uid">—</span></div>
+          <div class="muted" id="userEmailWrap" style="display:none;">Email: <span id="userEmail" class="pill">—</span></div>
+        </div>
+        <div class="right">
+          <button id="copyBtn" class="linkish" title="Copy userId">Copy ID</button>
+          <button id="logoutBtn" class="linkish">Logout</button>
+        </div>
+      </div>
+
+      <div class="row mt-10">
+        <label>Device:
+          <select id="deviceSelect" class="select"></select>
+        </label>
+        <button id="refreshBtn" class="button">Refresh</button>
+        <span id="status" class="muted"></span>
+      </div>
+
+      <div class="sensor-grid">
+        <div class="sensor-card">
+          <span class="material-icons">thermostat</span>
+          <div class="sensor-value">25.5°C</div>
+          <div class="sensor-label">Temperature</div>
+        </div>
+        <div class="sensor-card">
+          <span class="material-icons">water_drop</span>
+          <div class="sensor-value">65%</div>
+          <div class="sensor-label">Humidity</div>
+        </div>
+        <div class="sensor-card">
+          <span class="material-icons">light_mode</span>
+          <div class="sensor-value">850 lux</div>
+          <div class="sensor-label">Light</div>
+        </div>
+        <div class="sensor-card">
+          <span class="material-icons">co2</span>
+          <div class="sensor-value">400 ppm</div>
+          <div class="sensor-label">CO2</div>
+        </div>
+      </div>
+
+      <div class="control-panel">
+        <div class="control-card">
+          <span class="material-icons">power</span>
+          <div class="control-label">Pump</div>
+          <label class="switch">
+            <input type="checkbox" id="pumpControl">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="control-card">
+          <span class="material-icons">air</span>
+          <div class="control-label">Fan</div>
+          <label class="switch">
+            <input type="checkbox" id="fanControl">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
     </div>
 
     <script>

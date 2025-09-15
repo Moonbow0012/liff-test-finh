@@ -1,0 +1,306 @@
+{
+  "designSystemProfile": {
+    "name": "Modern Agricultural Dashboard",
+    "version": "1.0",
+    "description": "Clean, modern dashboard design with nature-inspired aesthetics for agricultural/hydroponics applications",
+    
+    "colorPalette": {
+      "primary": {
+        "green": {
+          "main": "#4A8B3B",
+          "light": "#6BA85B", 
+          "dark": "#2E5A21",
+          "gradient": "linear-gradient(135deg, #4A8B3B 0%, #6BA85B 100%)"
+        },
+        "background": "#F8FAF9"
+      },
+      "secondary": {
+        "yellow": {
+          "main": "#F5C842",
+          "light": "#F7D666",
+          "background": "#FFF8E1"
+        }
+      },
+      "neutral": {
+        "white": "#FFFFFF",
+        "gray": {
+          "light": "#F5F7F6",
+          "medium": "#E5E9E7",
+          "dark": "#6B7280",
+          "text": "#374151"
+        }
+      },
+      "semantic": {
+        "success": "#10B981",
+        "warning": "#F59E0B",
+        "error": "#EF4444",
+        "info": "#3B82F6"
+      }
+    },
+
+    "typography": {
+      "fontFamily": {
+        "primary": "system-ui, -apple-system, sans-serif",
+        "fallback": "Arial, Helvetica, sans-serif"
+      },
+      "fontSize": {
+        "xs": "12px",
+        "sm": "14px",
+        "base": "16px",
+        "lg": "18px",
+        "xl": "20px",
+        "2xl": "24px",
+        "3xl": "30px",
+        "4xl": "36px",
+        "5xl": "48px"
+      },
+      "fontWeight": {
+        "normal": 400,
+        "medium": 500,
+        "semibold": 600,
+        "bold": 700
+      },
+      "hierarchy": {
+        "pageTitle": {
+          "fontSize": "5xl",
+          "fontWeight": "bold",
+          "color": "white",
+          "letterSpacing": "-0.02em"
+        },
+        "cardTitle": {
+          "fontSize": "lg",
+          "fontWeight": "semibold",
+          "color": "gray.text"
+        },
+        "metricValue": {
+          "fontSize": "3xl",
+          "fontWeight": "bold",
+          "color": "white"
+        },
+        "metricLabel": {
+          "fontSize": "sm",
+          "fontWeight": "medium",
+          "color": "white",
+          "opacity": 0.9
+        }
+      }
+    },
+
+    "spacing": {
+      "scale": "8px",
+      "values": {
+        "xs": "4px",
+        "sm": "8px",
+        "md": "16px",
+        "lg": "24px",
+        "xl": "32px",
+        "2xl": "48px",
+        "3xl": "64px"
+      }
+    },
+
+    "borderRadius": {
+      "sm": "4px",
+      "md": "8px",
+      "lg": "12px",
+      "xl": "16px",
+      "2xl": "24px",
+      "full": "50%"
+    },
+
+    "shadows": {
+      "sm": "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
+      "md": "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+      "lg": "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+      "xl": "0 20px 25px -5px rgba(0, 0, 0, 0.1)"
+    },
+
+    "layout": {
+      "structure": "dashboard",
+      "patterns": {
+        "header": {
+          "height": "64px",
+          "backgroundColor": "primary.green.main",
+          "padding": "0 24px",
+          "elements": ["logo", "navigation", "search", "profile"]
+        },
+        "hero": {
+          "backgroundColor": "primary.green.main",
+          "padding": "48px 24px",
+          "elements": ["pageTitle", "keyMetrics", "illustration"]
+        },
+        "contentGrid": {
+          "display": "grid",
+          "columns": "repeat(auto-fit, minmax(300px, 1fr))",
+          "gap": "24px",
+          "padding": "24px"
+        }
+      }
+    },
+
+    "components": {
+      "card": {
+        "base": {
+          "backgroundColor": "white",
+          "borderRadius": "xl",
+          "padding": "24px",
+          "shadow": "md",
+          "border": "1px solid rgba(0, 0, 0, 0.05)"
+        },
+        "variants": {
+          "metric": {
+            "backgroundColor": "primary.green.main",
+            "color": "white",
+            "padding": "16px 20px"
+          },
+          "alert": {
+            "backgroundColor": "secondary.yellow.background",
+            "border": "1px solid secondary.yellow.main"
+          },
+          "data": {
+            "backgroundColor": "white",
+            "minHeight": "200px"
+          }
+        }
+      },
+
+      "badge": {
+        "base": {
+          "padding": "4px 12px",
+          "borderRadius": "full",
+          "fontSize": "sm",
+          "fontWeight": "medium"
+        },
+        "variants": {
+          "health": {
+            "backgroundColor": "white",
+            "color": "primary.green.main"
+          },
+          "status": {
+            "backgroundColor": "primary.green.dark",
+            "color": "white"
+          }
+        }
+      },
+
+      "button": {
+        "base": {
+          "padding": "8px 16px",
+          "borderRadius": "md",
+          "fontWeight": "medium",
+          "transition": "all 0.2s"
+        },
+        "variants": {
+          "primary": {
+            "backgroundColor": "primary.green.dark",
+            "color": "white"
+          },
+          "secondary": {
+            "backgroundColor": "white",
+            "color": "gray.text",
+            "border": "1px solid gray.medium"
+          }
+        }
+      },
+
+      "searchInput": {
+        "backgroundColor": "rgba(255, 255, 255, 0.2)",
+        "border": "1px solid rgba(255, 255, 255, 0.3)",
+        "borderRadius": "lg",
+        "color": "white",
+        "placeholder": "rgba(255, 255, 255, 0.7)"
+      },
+
+      "navigation": {
+        "items": {
+          "color": "white",
+          "fontSize": "base",
+          "fontWeight": "medium",
+          "padding": "8px 16px",
+          "borderRadius": "md"
+        }
+      },
+
+      "dataVisualization": {
+        "chart": {
+          "backgroundColor": "transparent",
+          "gridColor": "rgba(255, 255, 255, 0.1)",
+          "lineColor": "secondary.yellow.main",
+          "pointColor": "white"
+        }
+      },
+
+      "table": {
+        "header": {
+          "fontSize": "xs",
+          "fontWeight": "semibold",
+          "color": "gray.dark",
+          "textTransform": "uppercase",
+          "letterSpacing": "0.05em"
+        },
+        "cell": {
+          "padding": "12px 0",
+          "fontSize": "sm",
+          "color": "gray.text"
+        },
+        "row": {
+          "borderBottom": "1px solid gray.light"
+        }
+      },
+
+      "statusIndicator": {
+        "variants": {
+          "percentage": {
+            "color": "semantic.success",
+            "fontSize": "sm",
+            "fontWeight": "medium"
+          },
+          "level": {
+            "color": "gray.text",
+            "fontSize": "sm"
+          }
+        }
+      }
+    },
+
+    "designPrinciples": {
+      "cleanMinimalism": "Emphasis on whitespace and clean lines",
+      "natureInspired": "Green color palette reflecting agricultural theme",
+      "dataFocused": "Clear hierarchy for metrics and data visualization",
+      "functionalIllustration": "Simple, purpose-driven graphics",
+      "consistentSpacing": "8px grid system for consistent rhythm",
+      "accessibleContrast": "Sufficient contrast ratios for readability",
+      "responsiveDesign": "Flexible grid system for various screen sizes"
+    },
+
+    "interactions": {
+      "hover": {
+        "cards": "subtle shadow increase and slight scale",
+        "buttons": "background color darkening",
+        "links": "opacity change to 0.8"
+      },
+      "transitions": {
+        "duration": "0.2s",
+        "easing": "ease-in-out"
+      }
+    },
+
+    "iconography": {
+      "style": "outline/linear",
+      "strokeWidth": "1.5px",
+      "size": {
+        "sm": "16px",
+        "md": "20px",
+        "lg": "24px"
+      },
+      "usage": "contextual indicators, navigation, and feature representation"
+    },
+
+    "illustrations": {
+      "style": "simple, flat design with minimal detail",
+      "placement": "supportive, non-intrusive",
+      "colorPalette": "matches brand colors",
+      "purpose": "contextual enhancement, not decoration"
+    }
+  }
+}

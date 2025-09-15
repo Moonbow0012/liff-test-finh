@@ -104,3 +104,120 @@ pre.log{
 /* Small helpers */
 .mt-10{ margin-top:10px; }
 .flex-1{ flex:1; }
+
+/* Sensor Grid */
+.sensor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.sensor-card {
+  background: var(--finh-surface);
+  border: 1px solid var(--finh-slate-200);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+  text-align: center;
+  transition: transform 0.2s ease;
+}
+
+.sensor-card:hover {
+  transform: translateY(-2px);
+}
+
+.sensor-card .material-icons {
+  font-size: 32px;
+  color: var(--finh-green-600);
+  margin-bottom: 8px;
+}
+
+.sensor-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--finh-slate-900);
+  margin: 8px 0;
+}
+
+.sensor-label {
+  color: var(--finh-slate-500);
+  font-size: 14px;
+}
+
+/* Control Panel */
+.control-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.control-card {
+  background: var(--finh-surface);
+  border: 1px solid var(--finh-slate-200);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.control-card .material-icons {
+  font-size: 24px;
+  color: var(--finh-blue-600);
+}
+
+.control-label {
+  color: var(--finh-slate-700);
+  font-weight: 500;
+}
+
+/* Switch Toggle */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 24px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--finh-slate-300);
+  transition: .4s;
+  border-radius: 24px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 4px;
+  bottom: 4px;
+  background-color: white;
+  transition: .4s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background: linear-gradient(135deg, var(--finh-green-600), var(--finh-blue-600));
+}
+
+input:checked + .slider:before {
+  transform: translateX(26px);
+}
