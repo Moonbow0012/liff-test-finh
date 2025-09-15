@@ -125,6 +125,17 @@
       if (idToken) sessionStorage.setItem('line_id_token', idToken);
       if (accessToken) sessionStorage.setItem('line_access_token', accessToken);
 
+      async function authedGet(url) {
+      const r = await fetch(url, { headers: buildAuthHeaders(), cache:'no-store' });
+      if (!r.ok) {
+        console.error('GET 404/ERR =>', url);
+        const text = await r.text();
+        throw new Error(`HTTP ${r.status}: ${text}`);
+      }
+      return r.json();
+      }
+
+
       // Render user
       async function renderUser(){
         const profile = await liff.getProfile();
