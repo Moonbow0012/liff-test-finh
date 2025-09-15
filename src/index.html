@@ -17,35 +17,31 @@ window.addEventListener('DOMContentLoaded', async () => {
     await liff.init({ liffId: LIFF_ID });
 
     if (!liff.isLoggedIn()) {
+      // ไม่จำเป็นต้องกำหนด redirectUri เอง ให้ LIFF จัดการ
       liff.login({ scope: ['openid','profile','email'], prompt: 'consent' });
       return;
     }
 
+    // --- ถ้าถูก redirect กลับมาพร้อม ?code=... ให้ล้าง query แล้วไปต่อ (ไม่แลกโค้ดเอง) ---
     const qs = new URLSearchParams(location.search);
-    const code = qs.get('code');
-    const redirectUri = qs.get('liffRedirectUri')
-      ? decodeURIComponent(qs.get('liffRedirectUri'))
-      : (location.origin + location.pathname);
-
-    if (code) {
-      const r = await fetch('/api/line/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, redirect_uri: redirectUri })
-      });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error || JSON.stringify(data));
-
-      if (data.id_token)     sessionStorage.setItem('line_id_token', data.id_token);
-      if (data.access_token) sessionStorage.setItem('line_access_token', data.access_token);
-
-      history.replaceState({}, '', redirectUri);
+    if (qs.get('code')) {
+      const redirectUri = qs.get('liffRedirectUri')
+        ? decodeURIComponent(qs.get('liffRedirectUri'))
+        : (location.origin + location.pathname);
+      history.replaceState({}, '', redirectUri); // ล้างโค้ดออกเพื่อกันเรียกซ้ำ
     }
 
-    const storedIdToken = sessionStorage.getItem('line_id_token') || liff.getIDToken();
-    const storedAccess  = sessionStorage.getItem('line_access_token') || liff.getAccessToken();
+    // --- ใช้ token จาก LIFF โดยตรง ---
+    // id_token เอาไว้ยืนยันตัวตนฝั่งแบ็กเอนด์ (JWT)
+    // access_token เอาไว้เรียก LINE APIs บางอย่างจากไคลเอนต์
+    const idToken = liff.getIDToken();
+    const accessToken = liff.getAccessToken();
+    if (idToken) sessionStorage.setItem('line_id_token', idToken);
+    if (accessToken) sessionStorage.setItem('line_access_token', accessToken);
 
     function buildAuthHeaders() {
+      const storedIdToken = sessionStorage.getItem('line_id_token') || liff.getIDToken();
+      const storedAccess  = sessionStorage.getItem('line_access_token') || liff.getAccessToken();
       const h = { 'Content-Type': 'application/json' };
       if (storedIdToken && storedIdToken.includes('.')) {
         h['x-line-id-token'] = storedIdToken;
@@ -70,7 +66,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       return j;
     }
 
-    // ===== UI (เพิ่ม User card) =====
+    // ===== UI (มี User card ตามที่ทำไว้) =====
     root.innerHTML = `
       <style>
         .row { display:flex; gap:.5rem; align-items:center; margin:8px 0; flex-wrap:wrap; }
@@ -83,8 +79,6 @@ window.addEventListener('DOMContentLoaded', async () => {
         .good { color:#10b981; font-weight:600; }
         .bad  { color:#ef4444; font-weight:600; }
         pre { background:#0b1020; color:#cbd5e1; padding:12px; border-radius:8px; overflow:auto; }
-
-        /* User card */
         .user { display:flex; align-items:center; gap:12px; }
         .avatar { width:44px; height:44px; border-radius:50%; object-fit:cover; background:#e5e7eb; }
         .uid { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; cursor:pointer; }
@@ -130,10 +124,10 @@ window.addEventListener('DOMContentLoaded', async () => {
       <pre id="out">—</pre>
     `;
 
-    // --------- เติมข้อมูลผู้ใช้ LINE ----------
+    // ----- แสดงโปรไฟล์ LINE -----
     async function renderUser() {
       const profile = await liff.getProfile();          // displayName, userId, pictureUrl
-      const decoded = liff.getDecodedIDToken();         // อาจมี email ถ้า scope 'email'
+      const decoded = liff.getDecodedIDToken();         // ถ้ามี scope email
       const email   = decoded && decoded.email;
 
       $('userName').textContent = profile.displayName || '—';
@@ -155,14 +149,13 @@ window.addEventListener('DOMContentLoaded', async () => {
       $('logoutBtn').onclick = () => { liff.logout(); location.reload(); };
     }
     await renderUser();
-    // -------------------------------------------
 
     const sel = $('deviceSelect'), out = $('out'), statusEl = $('status');
     const growthBar = $('growthBar'), growthPct = $('growthPct'),
           growthLevel = $('growthLevel'), growthGood = $('growthGood'),
           growthUpdated = $('growthUpdated');
 
-    // โหลดรายการอุปกรณ์ที่อนุญาตจาก backend
+    // โหลดรายการอุปกรณ์
     const { devices } = await authedGet('/api/devices');
     devices.forEach(d => {
       const op = document.createElement('option');
@@ -173,13 +166,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (saved && [...sel.options].some(o => o.value === saved)) sel.value = saved;
     sel.onchange = async () => {
       localStorage.setItem('deviceId', sel.value);
-      await refresh();   // debug shadow
-      await loadGrowth(); // % & Level
+      await refresh();
+      await loadGrowth();
     };
 
-    // GraphQL query เผื่อ debug ดู shadow
+    // Debug shadow
     const Q_SHADOW = `query($deviceid:String!){ shadow(deviceid:$deviceid){ deviceid rev modified data } }`;
-
     async function refresh() {
       try {
         statusEl.textContent = 'Loading…';
@@ -190,7 +182,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
 
     function normalizeLevel(lvl) {
-      // คงรูปแบบตัวเลขที่คุณใช้ (1..4) ตามโค้ดเดิม
       if (typeof lvl === 'number') return ['1','2','3','4'][Math.max(0, Math.min(3, lvl))] || String(lvl);
       if (typeof lvl === 'string' && /^\d+$/.test(lvl)) {
         const n = parseInt(lvl, 10);
@@ -198,9 +189,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       }
       return String(lvl || '—');
     }
-
     function pickUpdated(data) {
-      // รองรับทั้ง updatedAtIso, updatedAt (string) และ Firestore timestamp
       if (data.updatedAtIso) return data.updatedAtIso;
       const u = data.updatedAt;
       if (!u) return '—';
@@ -209,7 +198,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       return String(u);
     }
 
-    // === โหลด % & Level จาก Firebase Functions ===
+    // โหลด %/Level
     async function loadGrowth() {
       try {
         const url = `${FIREBASE_PROGRESS_URL}?deviceId=${encodeURIComponent(sel.value)}`;
@@ -219,18 +208,14 @@ window.addEventListener('DOMContentLoaded', async () => {
 
         const pct = typeof data.percent === 'number' ? Math.max(0, Math.min(100, data.percent)) : null;
         const lvl = normalizeLevel(data.level);
-
-        // ใช้ Status ถ้ามี (ตามที่ฝั่งฟังก์ชันส่งมา) ถ้าไม่มี fallback ไป goodNow
         const good = ('Status' in data) ? !!data.Status : !!data.goodNow;
         const updated = pickUpdated(data);
 
         growthPct.textContent = pct != null ? pct.toFixed(1) : '—';
         growthBar.style.width = pct != null ? `${pct}%` : '0%';
         growthLevel.textContent = lvl;
-
         growthGood.textContent = good ? 'OK' : 'NOT OK';
         growthGood.className = good ? 'good' : 'bad';
-
         growthUpdated.textContent = updated;
       } catch (e) {
         growthPct.textContent = '—';
@@ -245,11 +230,8 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     $('refreshBtn').onclick = async () => { await refresh(); await loadGrowth(); };
 
-    // เริ่มต้น
     await refresh();
     await loadGrowth();
-
-    // ออปชัน: รีเฟรช %/Level อัตโนมัติทุก 60 วินาที
     setInterval(loadGrowth, 60000);
 
   } catch (e) {
