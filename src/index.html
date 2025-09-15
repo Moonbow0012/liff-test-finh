@@ -1,241 +1,313 @@
-<script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-<script defer>
-window.addEventListener('DOMContentLoaded', async () => {
-  const LIFF_ID = '2008085765-YDwJrxy9';
-  const FIREBASE_PROGRESS_URL = 'https://getprogress-iyipepekja-as.a.run.app';
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FINH • Growth Monitor</title>
 
-  const $ = (id) => document.getElementById(id);
-  const root = document.getElementById('app') || document.body;
+  <!-- ธีม FINH (เขียว–น้ำเงิน) -->
+  <link rel="stylesheet" href="/finh-theme.css">
 
-  const showError = (err) => {
-    console.error(err);
-    const msg = (typeof err === 'string') ? err : (err?.message || JSON.stringify(err));
-    root.insertAdjacentHTML('beforeend', `<pre style="color:#b91c1c">ERROR: ${msg}</pre>`);
-  };
-
-  try {
-    await liff.init({ liffId: LIFF_ID });
-
-    if (!liff.isLoggedIn()) {
-      // ไม่จำเป็นต้องกำหนด redirectUri เอง ให้ LIFF จัดการ
-      liff.login({ scope: ['openid','profile','email'], prompt: 'consent' });
-      return;
-    }
-
-    // --- ถ้าถูก redirect กลับมาพร้อม ?code=... ให้ล้าง query แล้วไปต่อ (ไม่แลกโค้ดเอง) ---
-    const qs = new URLSearchParams(location.search);
-    if (qs.get('code')) {
-      const redirectUri = qs.get('liffRedirectUri')
-        ? decodeURIComponent(qs.get('liffRedirectUri'))
-        : (location.origin + location.pathname);
-      history.replaceState({}, '', redirectUri); // ล้างโค้ดออกเพื่อกันเรียกซ้ำ
-    }
-
-    // --- ใช้ token จาก LIFF โดยตรง ---
-    // id_token เอาไว้ยืนยันตัวตนฝั่งแบ็กเอนด์ (JWT)
-    // access_token เอาไว้เรียก LINE APIs บางอย่างจากไคลเอนต์
-    const idToken = liff.getIDToken();
-    const accessToken = liff.getAccessToken();
-    if (idToken) sessionStorage.setItem('line_id_token', idToken);
-    if (accessToken) sessionStorage.setItem('line_access_token', accessToken);
-
-    function buildAuthHeaders() {
-      const storedIdToken = sessionStorage.getItem('line_id_token') || liff.getIDToken();
-      const storedAccess  = sessionStorage.getItem('line_access_token') || liff.getAccessToken();
-      const h = { 'Content-Type': 'application/json' };
-      if (storedIdToken && storedIdToken.includes('.')) {
-        h['x-line-id-token'] = storedIdToken;
-      } else if (storedAccess) {
-        h['x-line-access-token'] = storedAccess;
-      } else {
-        throw new Error('No LINE token available. Please login again.');
-      }
-      return h;
-    }
-
-    async function authedGet(url) {
-      const r = await fetch(url, { headers: buildAuthHeaders() });
-      const t = await r.text(); let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
-      if (!r.ok || j.error) throw new Error(j.error || t);
-      return j;
-    }
-    async function authedPost(url, body) {
-      const r = await fetch(url, { method:'POST', headers: buildAuthHeaders(), body: JSON.stringify(body||{}) });
-      const t = await r.text(); let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
-      if (!r.ok || j.errors) throw new Error(j.errors ? JSON.stringify(j.errors) : t);
-      return j;
-    }
-
-    // ===== UI (มี User card ตามที่ทำไว้) =====
-    root.innerHTML = `
-      <style>
-        .row { display:flex; gap:.5rem; align-items:center; margin:8px 0; flex-wrap:wrap; }
-        .muted { color:#6b7280; font-size:.9rem; }
-        .card { border:1px solid #e5e7eb; border-radius:12px; padding:12px; box-shadow:0 1px 2px rgba(0,0,0,.05); }
-        .progress-wrap{ display:flex; align-items:center; gap:8px; }
-        .bar{ flex:1; height:10px; background:#e5e7eb; border-radius:8px; overflow:hidden; }
-        .bar>span{ display:block; height:100%; width:0%; background:#10b981; transition:width .3s; }
-        .level{ font-weight:700; }
-        .good { color:#10b981; font-weight:600; }
-        .bad  { color:#ef4444; font-weight:600; }
-        pre { background:#0b1020; color:#cbd5e1; padding:12px; border-radius:8px; overflow:auto; }
-        .user { display:flex; align-items:center; gap:12px; }
-        .avatar { width:44px; height:44px; border-radius:50%; object-fit:cover; background:#e5e7eb; }
-        .uid { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; cursor:pointer; }
-        .uid:hover { text-decoration: underline; }
-        .pill { background:#f3f4f6; border-radius:8px; padding:2px 6px; font-size:.8rem; }
-        .right { margin-left:auto; display:flex; gap:8px; align-items:center; }
-        .linkish { background:none;border:none;color:#2563eb;cursor:pointer;padding:0; }
-      </style>
-
-      <div class="card user">
-        <img id="userAvatar" class="avatar" alt="avatar">
-        <div>
-          <div id="userName" style="font-weight:700">—</div>
-          <div class="muted">ID: <span id="userId" class="uid">—</span></div>
-          <div class="muted" id="userEmailWrap" style="display:none;">Email: <span id="userEmail" class="pill">—</span></div>
-        </div>
-        <div class="right">
-          <button id="copyBtn" class="linkish" title="Copy userId">Copy ID</button>
-          <button id="logoutBtn" class="linkish">Logout</button>
-        </div>
+  <!-- LINE LIFF SDK -->
+  <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="bar wrap">
+      <img src="/finh_logo.png" alt="FINH" class="logo" height="28" />
+      <div class="title">Growth Monitor</div>
+      <div class="spacer"></div>
+      <div class="pill" id="userPill">
+        <img id="userAvatar" class="avatar" alt="avatar" />
+        <span id="userName">—</span>
+        <button id="copyBtn" class="linkish" title="Copy userId">Copy ID</button>
+        <button id="logoutBtn" class="linkish">Logout</button>
       </div>
+    </div>
+  </header>
 
-      <div class="row" style="margin-top:10px;">
-        <label>Device: <select id="deviceSelect"></select></label>
-        <button id="refreshBtn">Refresh</button>
+  <!-- Main -->
+  <main class="wrap">
+    <!-- Controls -->
+    <section class="card">
+      <div class="row">
+        <label>Device:
+          <select id="deviceSelect"></select>
+        </label>
+        <button id="refreshBtn" class="primary">Refresh</button>
         <span id="status" class="muted"></span>
       </div>
+    </section>
 
-      <div class="card" id="growthCard">
-        <div class="row">
-          <div class="progress-wrap" style="flex:1;">
-            <div class="bar"><span id="growthBar"></span></div>
-            <div><span id="growthPct">—</span>%</div>
+    <!-- Progress -->
+    <section class="card">
+      <div class="row" style="align-items:flex-end">
+        <div style="flex:1">
+          <div class="muted">Progress</div>
+          <div class="bar"><span id="growthBar"></span></div>
+          <div class="row" style="justify-content:space-between">
+            <div class="big"><span id="growthPct">—</span>%</div>
+            <div class="chips">
+              <span class="chip info">Level: <b id="growthLevel">—</b></span>
+              <span class="chip" id="growthGoodChip">Status: <b id="growthGoodTxt">—</b></span>
+            </div>
           </div>
-          <div>Level: <span id="growthLevel" class="level">—</span></div>
-        </div>
-        <div class="row muted">
-          <div>Status: <span id="growthGood">—</span></div>
-          <div>Updated: <span id="growthUpdated">—</span></div>
         </div>
       </div>
+      <div class="row muted">
+        <div>Updated: <span id="growthUpdated">—</span></div>
+      </div>
+    </section>
 
-      <pre id="out">—</pre>
-    `;
+    <!-- Sensors quick view -->
+    <section class="card">
+      <div class="row" style="justify-content:space-between">
+        <div class="muted">Sensors</div>
+        <div class="muted" id="shadowMeta">—</div>
+      </div>
+      <div class="grid" id="sensorsGrid"></div>
+    </section>
 
-    // ----- แสดงโปรไฟล์ LINE -----
-    async function renderUser() {
-      const profile = await liff.getProfile();          // displayName, userId, pictureUrl
-      const decoded = liff.getDecodedIDToken();         // ถ้ามี scope email
-      const email   = decoded && decoded.email;
+    <!-- Debug -->
+    <section class="card">
+      <details class="debug" open>
+        <summary>Debug shadow JSON</summary>
+        <pre id="out">—</pre>
+      </details>
+    </section>
+  </main>
 
-      $('userName').textContent = profile.displayName || '—';
-      $('userId').textContent   = profile.userId || '—';
-      const av = $('userAvatar');
-      av.src = profile.pictureUrl || '';
-      av.alt = profile.displayName || 'avatar';
+  <script>
+  window.addEventListener('DOMContentLoaded', async () => {
+    const LIFF_ID = '2008085765-YDwJrxy9';
+    const FIREBASE_PROGRESS_URL = 'https://getprogress-iyipepekja-as.a.run.app';
 
-      if (email) {
-        $('userEmail').textContent = email;
-        $('userEmailWrap').style.display = '';
-      } else {
-        $('userEmailWrap').style.display = 'none';
-      }
+    const $ = (id) => document.getElementById(id);
+    const out = $('out');
+    const sensorsGrid = $('sensorsGrid');
+    const shadowMeta = $('shadowMeta');
 
-      $('copyBtn').onclick = async () => {
-        try { await navigator.clipboard.writeText(profile.userId || ''); } catch {}
-      };
-      $('logoutBtn').onclick = () => { liff.logout(); location.reload(); };
-    }
-    await renderUser();
-
-    const sel = $('deviceSelect'), out = $('out'), statusEl = $('status');
     const growthBar = $('growthBar'), growthPct = $('growthPct'),
-          growthLevel = $('growthLevel'), growthGood = $('growthGood'),
-          growthUpdated = $('growthUpdated');
+          growthLevel = $('growthLevel'), growthUpdated = $('growthUpdated'),
+          growthGoodChip = $('growthGoodChip'), growthGoodTxt = $('growthGoodTxt');
 
-    // โหลดรายการอุปกรณ์
-    const { devices } = await authedGet('/api/devices');
-    devices.forEach(d => {
-      const op = document.createElement('option');
-      op.value = d.deviceId; op.textContent = d.name || d.deviceId;
-      sel.appendChild(op);
-    });
-    const saved = localStorage.getItem('deviceId');
-    if (saved && [...sel.options].some(o => o.value === saved)) sel.value = saved;
-    sel.onchange = async () => {
-      localStorage.setItem('deviceId', sel.value);
-      await refresh();
-      await loadGrowth();
+    const statusEl = $('status');
+    const sel = $('deviceSelect');
+
+    const showError = (err) => {
+      console.error(err);
+      const msg = (typeof err === 'string') ? err : (err?.message || JSON.stringify(err));
+      out.textContent = `ERROR: ${msg}`;
+      statusEl.textContent = 'Failed';
     };
 
-    // Debug shadow
-    const Q_SHADOW = `query($deviceid:String!){ shadow(deviceid:$deviceid){ deviceid rev modified data } }`;
-    async function refresh() {
-      try {
-        statusEl.textContent = 'Loading…';
-        const r = await authedPost('/api/gql', { query: Q_SHADOW, variables: { deviceid: sel.value } });
-        out.textContent = JSON.stringify(r.data, null, 2);
-        statusEl.textContent = 'Updated: ' + new Date().toISOString();
-      } catch (e) { statusEl.textContent = 'Failed'; showError(e); }
-    }
-
-    function normalizeLevel(lvl) {
-      if (typeof lvl === 'number') return ['1','2','3','4'][Math.max(0, Math.min(3, lvl))] || String(lvl);
-      if (typeof lvl === 'string' && /^\d+$/.test(lvl)) {
-        const n = parseInt(lvl, 10);
-        return ['1','2','3','4'][Math.max(0, Math.min(3, n))] || lvl;
+    try {
+      // Init & login
+      await liff.init({ liffId: LIFF_ID });
+      if (!liff.isLoggedIn()) {
+        liff.login({ scope: ['openid','profile','email'], prompt: 'consent' });
+        return;
       }
-      return String(lvl || '—');
-    }
-    function pickUpdated(data) {
-      if (data.updatedAtIso) return data.updatedAtIso;
-      const u = data.updatedAt;
-      if (!u) return '—';
-      if (typeof u === 'string') return u;
-      if (u && typeof u === 'object' && '_seconds' in u) return new Date(u._seconds * 1000).toISOString();
-      return String(u);
-    }
 
-    // โหลด %/Level
-    async function loadGrowth() {
-      try {
-        const url = `${FIREBASE_PROGRESS_URL}?deviceId=${encodeURIComponent(sel.value)}`;
-        const r = await fetch(url, { cache: 'no-store' });
-        const data = await r.json();
-        if (!r.ok || data.error) throw new Error(data.error || JSON.stringify(data));
-
-        const pct = typeof data.percent === 'number' ? Math.max(0, Math.min(100, data.percent)) : null;
-        const lvl = normalizeLevel(data.level);
-        const good = ('Status' in data) ? !!data.Status : !!data.goodNow;
-        const updated = pickUpdated(data);
-
-        growthPct.textContent = pct != null ? pct.toFixed(1) : '—';
-        growthBar.style.width = pct != null ? `${pct}%` : '0%';
-        growthLevel.textContent = lvl;
-        growthGood.textContent = good ? 'OK' : 'NOT OK';
-        growthGood.className = good ? 'good' : 'bad';
-        growthUpdated.textContent = updated;
-      } catch (e) {
-        growthPct.textContent = '—';
-        growthBar.style.width = '0%';
-        growthLevel.textContent = '—';
-        growthGood.textContent = '—';
-        growthGood.className = '';
-        growthUpdated.textContent = '—';
-        showError(e);
+      // ถ้ากลับมาพร้อม ?code=… ให้ล้าง query ออกกัน error/เรียกซ้ำ
+      const qs = new URLSearchParams(location.search);
+      if (qs.get('code')) {
+        const redirectUri = qs.get('liffRedirectUri')
+          ? decodeURIComponent(qs.get('liffRedirectUri'))
+          : (location.origin + location.pathname);
+        history.replaceState({}, '', redirectUri);
       }
+
+      // เก็บ token จาก LIFF เผื่อเรียก backend /api/*
+      const idToken = liff.getIDToken();
+      const accessToken = liff.getAccessToken();
+      if (idToken) sessionStorage.setItem('line_id_token', idToken);
+      if (accessToken) sessionStorage.setItem('line_access_token', accessToken);
+
+      // Render user
+      async function renderUser(){
+        const profile = await liff.getProfile();
+        const decoded = liff.getDecodedIDToken();
+        $('userName').textContent = profile.displayName || '—';
+        $('userAvatar').src = profile.pictureUrl || '';
+        $('userAvatar').alt = profile.displayName || 'avatar';
+
+        $('copyBtn').onclick = async () => {
+          try { await navigator.clipboard.writeText(profile.userId || ''); } catch {}
+        };
+        $('logoutBtn').onclick = () => { liff.logout(); location.reload(); };
+        // Tooltip userId
+        $('userPill').title = `userId: ${profile.userId || '-'}` + (decoded?.email ? ` • email: ${decoded.email}` : '');
+      }
+      await renderUser();
+
+      // Auth headers for /api/*
+      function buildAuthHeaders() {
+        const storedIdToken = sessionStorage.getItem('line_id_token') || liff.getIDToken();
+        const storedAccess  = sessionStorage.getItem('line_access_token') || liff.getAccessToken();
+        const h = { 'Content-Type': 'application/json' };
+        if (storedIdToken && storedIdToken.includes('.')) {
+          h['x-line-id-token'] = storedIdToken;
+        } else if (storedAccess) {
+          h['x-line-access-token'] = storedAccess;
+        } else {
+          throw new Error('No LINE token available. Please login again.');
+        }
+        return h;
+      }
+      async function authedGet(url) {
+        const r = await fetch(url, { headers: buildAuthHeaders(), cache: 'no-store' });
+        const t = await r.text(); let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
+        if (!r.ok || j.error) throw new Error(j.error || t);
+        return j;
+      }
+      async function authedPost(url, body) {
+        const r = await fetch(url, { method:'POST', headers: buildAuthHeaders(), body: JSON.stringify(body||{}) });
+        const t = await r.text(); let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
+        if (!r.ok || j.errors) throw new Error(j.errors ? JSON.stringify(j.errors) : t);
+        return j;
+      }
+
+      // Load device list
+      const { devices } = await authedGet('/api/devices');
+      devices.forEach(d => {
+        const op = document.createElement('option');
+        op.value = d.deviceId;
+        op.textContent = d.name || d.deviceId;
+        sel.appendChild(op);
+      });
+      const saved = localStorage.getItem('deviceId');
+      if (saved && [...sel.options].some(o => o.value === saved)) sel.value = saved;
+
+      sel.onchange = async () => {
+        localStorage.setItem('deviceId', sel.value);
+        await refreshShadow();
+        await loadGrowth();
+      };
+
+      // ===== Shadow (debug + sensor quick view) =====
+      const Q_SHADOW = `query($deviceid:String!){
+        shadow(deviceid:$deviceid){ deviceid rev modified data }
+      }`;
+
+      function kvListFromShadow(shadowData) {
+        // คืนรายการ key/value ที่เป็นตัวเลขก่อน 4–8 ตัว
+        let obj = shadowData;
+        if (typeof obj === 'string') {
+          try { obj = JSON.parse(obj); } catch { return []; }
+        }
+        const out = [];
+        const pushNum = (k, v) => {
+          const num = (typeof v === 'number') ? v : Number(v);
+          if (!Number.isNaN(num)) out.push([k, num]);
+        };
+        const walk = (o, pref = '') => {
+          if (!o || typeof o !== 'object') return;
+          for (const k of Object.keys(o)) {
+            const v = o[k];
+            const key = pref ? `${pref}.${k}` : k;
+            if (v && typeof v === 'object' && !Array.isArray(v)) walk(v, key);
+            else pushNum(key, v);
+          }
+        };
+        if (obj && typeof obj === 'object') walk(obj);
+        return out.slice(0, 8);
+      }
+
+      function renderSensors(pairs) {
+        sensorsGrid.innerHTML = '';
+        if (!pairs.length) {
+          sensorsGrid.innerHTML = '<div class="muted">No numeric fields</div>';
+          return;
+        }
+        for (const [k, v] of pairs) {
+          const box = document.createElement('div');
+          box.className = 'sensor';
+          box.innerHTML = `
+            <div class="label">${k}</div>
+            <div class="val">${v}</div>
+          `;
+          sensorsGrid.appendChild(box);
+        }
+      }
+
+      async function refreshShadow() {
+        try {
+          statusEl.textContent = 'Loading…';
+          const r = await authedPost('/api/gql', { query: Q_SHADOW, variables: { deviceid: sel.value } });
+          out.textContent = JSON.stringify(r.data, null, 2);
+
+          const s = r?.data?.shadow;
+          const modified = s?.modified ? new Date(s.modified).toISOString() : '—';
+          shadowMeta.textContent = `deviceid=${s?.deviceid || '—'} • rev=${s?.rev ?? '—'} • modified=${modified}`;
+
+          const pairs = kvListFromShadow(s?.data);
+          renderSensors(pairs);
+
+          statusEl.textContent = 'Updated: ' + new Date().toISOString();
+        } catch (e) { showError(e); }
+      }
+
+      // ===== Progress (%/Level/Status) =====
+      function normalizeLevel(lvl) {
+        if (typeof lvl === 'number') return ['1','2','3','4'][Math.max(0, Math.min(3, lvl))] || String(lvl);
+        if (typeof lvl === 'string' && /^\d+$/.test(lvl)) {
+          const n = parseInt(lvl, 10);
+          return ['1','2','3','4'][Math.max(0, Math.min(3, n))] || lvl;
+        }
+        return String(lvl || '—');
+      }
+      function pickUpdated(data) {
+        if (data.updatedAtIso) return data.updatedAtIso;
+        const u = data.updatedAt;
+        if (!u) return '—';
+        if (typeof u === 'string') return u;
+        if (u && typeof u === 'object' && '_seconds' in u) return new Date(u._seconds * 1000).toISOString();
+        return String(u);
+      }
+      function setStatusChip(ok) {
+        growthGoodTxt.textContent = ok ? 'OK' : 'NOT OK';
+        growthGoodChip.className = 'chip ' + (ok ? 'ok' : 'bad');
+      }
+
+      async function loadGrowth() {
+        try {
+          const url = `${FIREBASE_PROGRESS_URL}?deviceId=${encodeURIComponent(sel.value)}`;
+          const r = await fetch(url, { cache: 'no-store' });
+          const data = await r.json();
+          if (!r.ok || data.error) throw new Error(data.error || JSON.stringify(data));
+
+          const pct = typeof data.percent === 'number' ? Math.max(0, Math.min(100, data.percent)) : null;
+          const lvl = normalizeLevel(data.level);
+          const good = ('Status' in data) ? !!data.Status : !!data.goodNow;
+          const updated = pickUpdated(data);
+
+          growthPct.textContent = pct != null ? pct.toFixed(1) : '—';
+          growthBar.style.width = pct != null ? `${pct}%` : '0%';
+          growthLevel.textContent = lvl;
+          setStatusChip(good);
+          growthUpdated.textContent = updated;
+        } catch (e) {
+          growthPct.textContent = '—';
+          growthBar.style.width = '0%';
+          growthLevel.textContent = '—';
+          setStatusChip(false);
+          growthUpdated.textContent = '—';
+          showError(e);
+        }
+      }
+
+      $('refreshBtn').onclick = async () => { await refreshShadow(); await loadGrowth(); };
+
+      // First load
+      await refreshShadow();
+      await loadGrowth();
+      setInterval(loadGrowth, 60000);
+    } catch (e) {
+      showError(e);
     }
-
-    $('refreshBtn').onclick = async () => { await refresh(); await loadGrowth(); };
-
-    await refresh();
-    await loadGrowth();
-    setInterval(loadGrowth, 60000);
-
-  } catch (e) {
-    showError(e);
-  }
-});
-</script>
+  });
+  </script>
+</body>
+</html>
