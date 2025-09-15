@@ -1,8 +1,7 @@
-
 <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script defer>
 window.addEventListener('DOMContentLoaded', async () => {
-  const LIFF_ID = '2008085765-YDwJrxy9'; 
+  const LIFF_ID = '2008085765-YDwJrxy9';
   const FIREBASE_PROGRESS_URL = 'https://getprogress-iyipepekja-as.a.run.app';
 
   const $ = (id) => document.getElementById(id);
@@ -17,13 +16,11 @@ window.addEventListener('DOMContentLoaded', async () => {
   try {
     await liff.init({ liffId: LIFF_ID });
 
-    // ขอ scope ให้ครบ (ครั้งเดียว)
     if (!liff.isLoggedIn()) {
       liff.login({ scope: ['openid','profile','email'], prompt: 'consent' });
       return;
     }
 
-    // --- แลก ?code=... เป็น token ผ่าน backend (ครั้งที่ถูก redirect กลับมา) ---
     const qs = new URLSearchParams(location.search);
     const code = qs.get('code');
     const redirectUri = qs.get('liffRedirectUri')
@@ -45,7 +42,6 @@ window.addEventListener('DOMContentLoaded', async () => {
       history.replaceState({}, '', redirectUri);
     }
 
-    // --- ดึง token ที่จะใช้ยิง backend /api/* ---
     const storedIdToken = sessionStorage.getItem('line_id_token') || liff.getIDToken();
     const storedAccess  = sessionStorage.getItem('line_access_token') || liff.getAccessToken();
 
@@ -104,7 +100,7 @@ window.addEventListener('DOMContentLoaded', async () => {
           <div>Level: <span id="growthLevel" class="level">—</span></div>
         </div>
         <div class="row muted">
-          <div>Good now: <span id="growthGood">—</span></div>
+          <div>Status: <span id="growthGood">—</span></div>
           <div>Updated: <span id="growthUpdated">—</span></div>
         </div>
       </div>
@@ -128,8 +124,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (saved && [...sel.options].some(o => o.value === saved)) sel.value = saved;
     sel.onchange = async () => {
       localStorage.setItem('deviceId', sel.value);
-      await refresh();   // refresh shadow
-      await loadGrowth(); // refresh % & Level
+      await refresh();   // debug shadow
+      await loadGrowth(); // % & Level
     };
 
     // GraphQL query เผื่อ debug ดู shadow
@@ -144,27 +140,47 @@ window.addEventListener('DOMContentLoaded', async () => {
       } catch (e) { statusEl.textContent = 'Failed'; showError(e); }
     }
 
+    function normalizeLevel(lvl) {
+      if (typeof lvl === 'number') return ['LOW','MID','HIGH','READY'][Math.max(0, Math.min(3, lvl))] || String(lvl);
+      if (typeof lvl === 'string' && /^\d+$/.test(lvl)) {
+        const n = parseInt(lvl, 10);
+        return ['LOW','MID','HIGH','READY'][Math.max(0, Math.min(3, n))] || lvl;
+      }
+      return String(lvl || '—');
+    }
+
+    function pickUpdated(data) {
+      // รองรับทั้ง updatedAtIso, updatedAt (string) และ Firestore timestamp
+      if (data.updatedAtIso) return data.updatedAtIso;
+      const u = data.updatedAt;
+      if (!u) return '—';
+      if (typeof u === 'string') return u;
+      if (u && typeof u === 'object' && '_seconds' in u) return new Date(u._seconds * 1000).toISOString();
+      return String(u);
+    }
+
     // === โหลด % & Level จาก Firebase Functions ===
     async function loadGrowth() {
       try {
         const url = `${FIREBASE_PROGRESS_URL}?deviceId=${encodeURIComponent(sel.value)}`;
-        const r = await fetch(url);
+        const r = await fetch(url, { cache: 'no-store' });
         const data = await r.json();
         if (!r.ok || data.error) throw new Error(data.error || JSON.stringify(data));
 
         const pct = typeof data.percent === 'number' ? Math.max(0, Math.min(100, data.percent)) : null;
-        const lvl = data.level || '—';
-        const good = !!data.goodNow;
-        const updated = data.updatedAt? (data.updatedAt._seconds
-                          ? new Date(data.updatedAt._seconds * 1000).toISOString()
-                          : String(data.updatedAt))
-                          : '—';
+        const lvl = normalizeLevel(data.level);
+
+        // ✅ ใช้ Status ถ้ามี (ตามที่คุณแก้ฝั่งฟังก์ชันไว้) ถ้าไม่มี fallback ไป goodNow
+        const good = ('Status' in data) ? !!data.Status : !!data.goodNow;
+        const updated = pickUpdated(data);
 
         growthPct.textContent = pct != null ? pct.toFixed(1) : '—';
         growthBar.style.width = pct != null ? `${pct}%` : '0%';
         growthLevel.textContent = lvl;
-        growthGood.textContent = good ? 'YES' : 'NO';
+
+        growthGood.textContent = good ? 'OK' : 'NOT OK';
         growthGood.className = good ? 'good' : 'bad';
+
         growthUpdated.textContent = updated;
       } catch (e) {
         growthPct.textContent = '—';
