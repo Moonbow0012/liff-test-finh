@@ -12,7 +12,8 @@
 </head>
 <body>
   <header class="hdr">
-    <img src="./finh_logo.png" alt="logo" class="logo"/>
+    <!-- ซ่อนโลโก้ถ้าไฟล์ไม่มี -->
+    <img src="./finh_logo.png" alt="logo" class="logo" onerror="this.style.display='none'"/>
     <h1>แจ้งปัญหาฟาร์ม</h1>
   </header>
 
@@ -70,7 +71,7 @@
     <button type="button" id="btnGeo" class="btn ghost">ดึงพิกัด</button>
 
     <label>รูปภาพ (ได้หลายรูป)
-      <input type="file" id="photos" accept="image/*" multiple>
+      <input type="file" id="photos" accept="image/*" capture="environment" multiple>
     </label>
     <div id="pv" class="preview"></div>
 
@@ -82,8 +83,13 @@
   </form>
 
   <script>
+    // ----------- ตั้งค่า -----------
     const LIFF_ID = "2008118596-nMd5qQ38";
-    const API_BASE = "https://createissue-iyipepekja-as.a.run.app"; // e.g. https://asia-southeast1-<proj>.cloudfunctions.net
+
+    // IMPORTANT: ใส่ URL ของแต่ละฟังก์ชัน (functions v2 มีโดเมนแยกกัน)
+    const AUTH_URL   = "https://authline-iyipepekja-as.a.run.app";    // <- แทนที่ด้วยของจริง
+    const CREATE_URL = "https://createissue-iyipepekja-as.a.run.app"; // <- แทนที่ด้วยของจริง
+
     const FIREBASE_CONFIG = {
       apiKey: "xxx",
       authDomain: "xxx.firebaseapp.com",
@@ -118,82 +124,105 @@
     let idToken = null;
 
     window.addEventListener('DOMContentLoaded', async () => {
-      await liff.init({ liffId: LIFF_ID });
-      if (!liff.isLoggedIn()) liff.login(); // default redirect = Endpoint URL ของ LIFF
+      try {
+        await liff.init({ liffId: LIFF_ID });
+        if (!liff.isLoggedIn()) liff.login(); // default redirect = Endpoint URL ของ LIFF
 
-      // โปรไฟล์ผู้ใช้
-      const prof = await liff.getProfile();
-      idToken = liff.getIDToken();
+        // โปรไฟล์ผู้ใช้
+        const prof = await liff.getProfile();
+        idToken = liff.getIDToken();
+        if (!idToken) { alert("ไม่พบ LINE id_token"); return; }
 
-      $("#uimg").src = prof.pictureUrl || "";
-      $("#uname").textContent = prof.displayName || "LINE User";
-      $("#uid").textContent = `uid: ${prof.userId}`;
+        $("#uimg").src = prof.pictureUrl || "";
+        $("#uname").textContent = prof.displayName || "LINE User";
+        $("#uid").textContent = `uid: ${prof.userId}`;
+        $("#logout").onclick = ()=> liff.logout();
 
-      $("#logout").onclick = ()=> liff.logout();
+        $("#btnGeo").onclick = ()=>navigator.geolocation.getCurrentPosition(
+          p=>{ $("#lat").value=p.coords.latitude.toFixed(6); $("#lng").value=p.coords.longitude.toFixed(6); },
+          ()=>alert("ดึงพิกัดไม่สำเร็จ")
+        );
+        $("#photos").addEventListener('change', e=>preview(e.target.files));
 
-      $("#btnGeo").onclick = ()=>navigator.geolocation.getCurrentPosition(
-        p=>{ $("#lat").value=p.coords.latitude.toFixed(6); $("#lng").value=p.coords.longitude.toFixed(6); },
-        ()=>alert("ดึงพิกัดไม่สำเร็จ")
-      );
-      $("#photos").addEventListener('change', e=>preview(e.target.files));
-
-      // แลก Firebase token แล้ว sign-in เพื่ออัปโหลด Storage
-      const resAuth = await fetch(API_BASE + "/authLine", {
-        method:"POST", headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ idToken })
-      });
-      const { firebaseToken } = await resAuth.json();
-      firebase.initializeApp(FIREBASE_CONFIG);
-      await firebase.auth().signInWithCustomToken(firebaseToken);
-
-      // ส่งฟอร์ม
-      $("#f").addEventListener('submit', async (e)=>{
-        e.preventDefault();
-        if (!$("#consent").checked) return alert("กรุณายินยอมก่อนส่ง");
-
-        const fd = new FormData(e.target);
-        const payload = {
-          farmId: fd.get("farmId"),
-          plotId: fd.get("plotId"),
-          crop: fd.get("crop"),
-          batch: fd.get("batch"),
-          category: fd.get("category"),
-          severity: Number(fd.get("severity") || 1),
-          description: fd.get("description"),
-          actionPlan: fd.get("actionPlan"),
-          productUsed: fd.get("productUsed"),
-          dose: fd.get("dose"),
-          phiDays: fd.get("phiDays") ? Number(fd.get("phiDays")) : null,
-          geo: {
-            lat: fd.get("lat") ? Number(fd.get("lat")) : null,
-            lng: fd.get("lng") ? Number(fd.get("lng")) : null
-          },
-          consent: true
-        };
-
-        // 1) createIssue
-        const res = await fetch(API_BASE + "/createIssue", {
+        // แลก Firebase token แล้ว sign-in เพื่ออัปโหลด Storage
+        const resAuth = await fetch(AUTH_URL, {
           method:"POST",
-          headers: { "Content-Type":"application/json", "Authorization":"Bearer "+idToken },
-          body: JSON.stringify(payload)
+          headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify({ idToken })
         });
-        if (!res.ok) return alert("สร้างรายการไม่สำเร็จ");
-        const { issueId, uploadPrefix } = await res.json();
-
-        // 2) upload photos
-        const files = $("#photos").files;
-        if (files.length){
-          const storage = firebase.storage().ref();
-          for (const f of files){
-            const blob = await resizeImage(f);
-            const path = `${uploadPrefix}/original/${Date.now()}-${f.name.replace(/\s+/g,'_')}`;
-            await storage.child(path).put(blob, { contentType:"image/jpeg" });
-          }
+        if (!resAuth.ok) {
+          const t = await resAuth.text();
+          throw new Error("authLine failed: " + t);
         }
+        const { firebaseToken } = await resAuth.json();
+        firebase.initializeApp(FIREBASE_CONFIG);
+        await firebase.auth().signInWithCustomToken(firebaseToken);
 
-        alert(`ส่งเรียบร้อย (เลขอ้างอิง: ${issueId})`);
-        if (liff.isInClient()) liff.closeWindow();
-      });
+        // ส่งฟอร์ม
+        $("#f").addEventListener('submit', async (e)=>{
+          e.preventDefault();
+          try {
+            if (!$("#consent").checked) return alert("กรุณายินยอมก่อนส่ง");
+
+            const fd = new FormData(e.target);
+            const n = (v)=> (v === "" || v === null) ? null : Number(v);
+            const payload = {
+              farmId: fd.get("farmId"),
+              plotId: fd.get("plotId"),
+              crop: fd.get("crop") || null,
+              batch: fd.get("batch") || null,
+              category: fd.get("category"),
+              severity: Number(fd.get("severity") || 1),
+              description: fd.get("description"),
+              actionPlan: fd.get("actionPlan") || null,
+              productUsed: fd.get("productUsed") || null,
+              dose: fd.get("dose") || null,
+              phiDays: n(fd.get("phiDays")),
+              geo: (()=> {
+                const lat = parseFloat(fd.get("lat")); const lng = parseFloat(fd.get("lng"));
+                return (Number.isFinite(lat) && Number.isFinite(lng)) ? { lat, lng } : null;
+              })(),
+              consent: true
+            };
+
+            // 1) createIssue
+            const res = await fetch(CREATE_URL, {
+              method:"POST",
+              headers: {
+                "Content-Type":"application/json",
+                "Authorization":"Bearer "+idToken
+              },
+              body: JSON.stringify(payload)
+            });
+            if (!res.ok) {
+              const t = await res.text();
+              throw new Error("createIssue failed: " + t);
+            }
+            const { issueId, uploadPrefix } = await res.json();
+
+            // 2) upload photos
+            const files = $("#photos").files;
+            if (files.length){
+              const storage = firebase.storage().ref();
+              for (const f of files){
+                const blob = await resizeImage(f);
+                const safe = f.name.replace(/\s+/g,'_').replace(/[^a-zA-Z0-9._-]/g, '');
+                const path = `${uploadPrefix}/original/${Date.now()}-${safe}`;
+                await storage.child(path).put(blob, { contentType:"image/jpeg" });
+              }
+            }
+
+            alert(`ส่งเรียบร้อย (เลขอ้างอิง: ${issueId})`);
+            if (liff.isInClient()) liff.closeWindow();
+          } catch (err) {
+            console.error(err);
+            alert(err.message || "ส่งไม่สำเร็จ");
+          }
+        });
+      } catch (err) {
+        console.error(err);
+        alert(err.message || "เริ่มต้นระบบไม่สำเร็จ");
+      }
     });
   </script>
 </body>
