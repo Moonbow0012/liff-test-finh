@@ -15,33 +15,48 @@ const { pickIssuePayload } = require("./lib/validate");
 // triggers
 const { onIssuePhotoUploaded } = require("./triggers/onIssuePhotoUploaded");
 
-/* ===================== CORS ===================== */
-// อนุญาต localhost (dev), และทุก *.vercel.app (ทั้ง preview/prod บน Vercel)
-// ถ้ามีโดเมนจริงของคุณ (เช่น survey.yourbrand.com) ให้เพิ่ม regex ใหม่เข้าไปตามตัวอย่างคอมเมนต์
+/* ======================= CORS (เวอร์ชันแข็งแรง) ======================= */
+/**
+ * อนุญาต:
+ *  - localhost (dev)
+ *  - ทุกโดเมน *.vercel.app (ทั้ง preview/prod ของ Vercel)
+ *  - (ออปชัน) โดเมนโปรดักชันของคุณเอง: เติม regex เพิ่มด้านล่าง
+ *
+ * ไม่ต้องกรอก preview URL ทีละอัน — แพทเทิร์น *.vercel.app ครอบหมด
+ */
 const ALLOWED = [
   /^https?:\/\/localhost(:\d+)?$/i,
   /^https:\/\/([a-z0-9-]+\.)*vercel\.app$/i,
-  // ตัวอย่าง: เพิ่มโดเมนโปรดักชันของคุณ (เปลี่ยน yourbrand เป็นของจริง)
+  // ตัวอย่าง: ถ้ามีโดเมนจริงของคุณ ให้เพิ่มบรรทัด regex ของโดเมนคุณเอง:
   // /^https:\/\/survey\.yourbrand\.com$/i,
 ];
 
 // เปิดกว้างชั่วคราวตอนดีบัก (อย่าลืมปิดในโปรดักชัน)
 const DEV_ALLOW_ALL = false;
 
+/** ตัดสินใจว่า origin นี้อนุญาตไหม */
 function isAllowedOrigin(origin = "") {
   try {
     const u = new URL(origin);
-    // Origin ที่เบราว์เซอร์ส่งมา "ไม่มี / ท้าย" เสมอ -> ใช้ protocol//host
-    const o = `${u.protocol}//${u.host}`;
-    return ALLOWED.some(re => re.test(o));
-  } catch { return false; }
+    const o = `${u.protocol}//${u.host}`; // origin ไม่มี "/" ท้าย
+    return ALLOWED.some((re) => re.test(o));
+  } catch {
+    return false; // กรณีไม่มี/ผิดรูปแบบ origin
+  }
 }
 
+/**
+ * ใส่ CORS headers และตอบ preflight ให้ถูกต้อง
+ * - ถ้าเป็น OPTIONS: ตอบ 204 พร้อม header ที่ต้องใช้
+ * - ถ้าไม่มี Origin (เช่นพิมพ์ URL ตรงในเบราว์เซอร์): "ไม่บล็อก" ให้ผ่าน (เพื่อเช็ค URL/ping ได้)
+ * - ถ้ามี Origin แต่ไม่อนุญาต: 403 "CORS blocked"
+ */
 function applyCors(req, res) {
   const origin = req.headers.origin || "";
-  const allowed = DEV_ALLOW_ALL || isAllowedOrigin(origin);
+  const hasOrigin = !!origin;
+  const allowed = DEV_ALLOW_ALL || (hasOrigin && isAllowedOrigin(origin));
 
-  // เฮดเดอร์พื้นฐานที่ต้องมี
+  // ใส่ header พื้นฐานทุกครั้ง (สำหรับ preflight)
   if (allowed) {
     res.set("Access-Control-Allow-Origin", origin);
   }
@@ -50,19 +65,27 @@ function applyCors(req, res) {
   res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   res.set("Access-Control-Max-Age", "86400"); // cache preflight 24 ชม.
 
+  // ตอบ preflight
   if (req.method === "OPTIONS") {
-    // ต้องใส่เฮดเดอร์ด้านบนก่อนเสมอ แล้วตอบ 204 เพื่อให้ preflight ผ่าน
+    // ถ้าต้องการให้ผ่านทุกกรณีชั่วคราว:
+    // if (!hasOrigin && DEV_ALLOW_ALL) res.set("Access-Control-Allow-Origin", "*");
     res.status(204).send("");
     return true;
   }
+
+  // ถ้าไม่มี origin (เช่นเปิด URL ตรง) — อนุญาตให้ทำงานต่อได้ เพื่อเทส ping/เปิดดู
+  if (!hasOrigin) return false;
+
+  // ถ้ามี origin แต่ไม่แมตช์ allowlist -> บล็อก
   if (!allowed) {
     console.warn("CORS blocked for origin:", origin);
     res.status(403).send("CORS blocked");
     return true;
   }
+
   return false;
 }
-/* ===================== จบ CORS ===================== */
+/* ======================= จบ CORS ======================= */
 
 /** POST /authLine -> แลก LINE id_token เป็น Firebase custom token */
 exports.authLine = onRequest({ secrets: [LINE_CHANNEL_ID] }, async (req, res) => {
@@ -130,11 +153,11 @@ exports.createIssue = onRequest({ secrets: [LINE_CHANNEL_ID] }, async (req, res)
   }
 });
 
-// Storage trigger ทำ thumbnail + เขียน photos[]
+// Storage trigger ทำ thumbnail + เติม photos[]
 exports.onIssuePhotoUploaded = onIssuePhotoUploaded({ admin });
 
-// ping เอาไว้เทส URL
+// ping สำหรับเทส URL โดยตรง (พิมพ์เข้าเบราว์เซอร์ได้ ไม่ถูก CORS บล็อก)
 exports.ping = onRequest((req, res) => {
-  if (applyCors(req, res)) return;
+  if (applyCors(req, res)) return; // จะไม่บล็อกกรณีไม่มี Origin
   res.json({ ok: true, codebase: "issues", at: new Date().toISOString() });
 });
