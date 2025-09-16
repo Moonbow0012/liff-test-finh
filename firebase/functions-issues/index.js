@@ -54,7 +54,7 @@ exports.authLine = onRequest({ secrets: [LINE_CHANNEL_ID] }, async (req, res) =>
     const { idToken } = req.body || {};
     if (!idToken) return res.status(400).send("Missing idToken");
 
-    const profile = await verifyLineIdToken(idToken, LINE_CHANNEL_ID.value()); // <-- ถ้าไม่แมตช์จะ throw
+    const profile = await verifyLineIdToken(idToken, LINE_CHANNEL_ID.value());
     const uid = `line_${profile.sub}`;
 
     await admin.auth().getUser(uid).catch(() =>
@@ -65,7 +65,7 @@ exports.authLine = onRequest({ secrets: [LINE_CHANNEL_ID] }, async (req, res) =>
     return res.json({ firebaseToken, displayName: profile.name || null });
   } catch (e) {
     console.error("authLine.error", e?.message || e);
-    // ส่งรายละเอียดบางส่วนกลับไปเพื่อ debug ชั่วคราว (โปรดักชันค่อยเปลี่ยนเป็น "Unauthorized")
+    // ส่งรายละเอียดกลับไป (ช่วง debug) เพื่อจะได้เห็นว่า verify พลาดอะไร
     return res.status(401).json({ ok: false, error: String(e?.message || e) });
   }
 });

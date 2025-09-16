@@ -1,4 +1,4 @@
-// lib/line.js
+// firebase/functions-issues/lib/line.js
 const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
 
 async function verifyLineIdToken(idToken, channelId) {
@@ -9,13 +9,9 @@ async function verifyLineIdToken(idToken, channelId) {
   });
 
   const data = await resp.json().catch(() => ({}));
-
-  // คาดหวังให้มี sub และ aud = channelId
   const ok = resp.ok && data?.sub && (data?.aud === channelId || data?.client_id === channelId);
   if (!ok) {
-    // โยนรายละเอียดให้อ่านใน Cloud Logging ได้ชัด
-    const msg = `LINE verify failed (${resp.status}): ` + JSON.stringify(data);
-    throw new Error(msg);
+    throw new Error(`LINE verify failed (${resp.status}): ${JSON.stringify(data)}`);
   }
   return data; // { sub, aud, name?, picture?, ... }
 }
