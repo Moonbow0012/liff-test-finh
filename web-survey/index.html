@@ -85,8 +85,6 @@
   <script>
     // ----------- ตั้งค่า -----------
     const LIFF_ID = "2008118596-nMd5qQ38";
-
-    // IMPORTANT: ใส่ URL ของแต่ละฟังก์ชัน (functions v2 มีโดเมนแยกกัน)
     const AUTH_URL   = "https://authline-iyipepekja-as.a.run.app";    // <- แทนที่ด้วยของจริง
     const CREATE_URL = "https://createissue-iyipepekja-as.a.run.app"; // <- แทนที่ด้วยของจริง
 
@@ -128,6 +126,20 @@
         await liff.init({ liffId: LIFF_ID });
         if (!liff.isLoggedIn()) liff.login(); // default redirect = Endpoint URL ของ LIFF
 
+        if (!liff.isLoggedIn()) {
+        liff.login({ scope: ['openid','profile','email'] });
+        return;
+      }
+
+        let idToken = liff.getIDToken();
+      if (!idToken) {
+        liff.logout();
+        liff.login({ scope: ['openid','profile','email'] });
+        return;
+      }
+      const decoded = liff.getDecodedIDToken?.();
+      console.log("Decoded ID token:", decoded);
+
         // โปรไฟล์ผู้ใช้
         const prof = await liff.getProfile();
         idToken = liff.getIDToken();
@@ -146,17 +158,18 @@
 
         // แลก Firebase token แล้ว sign-in เพื่ออัปโหลด Storage
         const resAuth = await fetch(AUTH_URL, {
-          method:"POST",
-          headers:{ "Content-Type":"application/json" },
-          body: JSON.stringify({ idToken })
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ idToken })
         });
-        if (!resAuth.ok) {
-          const t = await resAuth.text();
-          throw new Error("authLine failed: " + t);
-        }
-        const { firebaseToken } = await resAuth.json();
-        firebase.initializeApp(FIREBASE_CONFIG);
-        await firebase.auth().signInWithCustomToken(firebaseToken);
+      const txt = await resAuth.text();
+      let authJson = {};
+      try { authJson = JSON.parse(txt); } catch {}
+      if (!resAuth.ok) throw new Error("authLine failed: " + (authJson.error || txt));
+
+      const { firebaseToken } = authJson;
+      firebase.initializeApp(FIREBASE_CONFIG);
+      await firebase.auth().signInWithCustomToken(firebaseToken);
 
         // ส่งฟอร์ม
         $("#f").addEventListener('submit', async (e)=>{
