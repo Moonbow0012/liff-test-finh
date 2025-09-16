@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>แบบสอบถามปัญหาฟาร์ม</title>
+  <link rel="stylesheet" href="./styles.css"/>
+  <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.13.1/firebase-auth-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.13.1/firebase-storage-compat.js"></script>
+</head>
+<body>
+  <header class="hdr">
+    <img src="./finh_logo.png" alt="logo" class="logo"/>
+    <h1>แจ้งปัญหาฟาร์ม</h1>
+  </header>
+
+  <section id="userCard" class="card user">
+    <img id="uimg" class="avatar" alt="avatar"/>
+    <div>
+      <div id="uname" class="name">...</div>
+      <div id="uid" class="uid muted">uid: -</div>
+    </div>
+    <button id="logout" class="btn outline">ออกจากระบบ</button>
+  </section>
+
+  <form id="f" class="card form">
+    <div class="row">
+      <label>ฟาร์ม (farmId)<input name="farmId" required placeholder="เช่น farm-1"></label>
+      <label>แปลง (plotId)<input name="plotId" required placeholder="เช่น P01"></label>
+    </div>
+
+    <div class="row">
+      <label>ชนิดพืช (crop)<input name="crop" placeholder="เช่น lettuce"></label>
+      <label>รุ่นผลิต (batch)<input name="batch" placeholder="เช่น 2025-09-A"></label>
+    </div>
+
+    <label>ประเภทปัญหา
+      <select name="category" required>
+        <option value="">-- เลือก --</option>
+        <option>WEED</option><option>PEST</option>
+        <option>DISEASE</option><option>NUTRIENT</option>
+        <option>OTHER</option>
+      </select>
+    </label>
+
+    <label>ความรุนแรง (1-5)
+      <input type="number" name="severity" min="1" max="5" value="1" required>
+    </label>
+
+    <label>รายละเอียด
+      <textarea name="description" rows="3" required></textarea>
+    </label>
+
+    <div class="row">
+      <label>วิธีแก้ / แผนดำเนินการ<input name="actionPlan"></label>
+      <label>สาร/ผลิตภัณฑ์ที่ใช้<input name="productUsed"></label>
+    </div>
+
+    <div class="row">
+      <label>อัตราใช้ (dose)<input name="dose" placeholder="เช่น 60 ml/20L"></label>
+      <label>PHI (วัน)<input type="number" name="phiDays" min="0"></label>
+    </div>
+
+    <div class="row">
+      <label>ละติจูด (lat)<input id="lat" name="lat" placeholder="16.12345"></label>
+      <label>ลองจิจูด (lng)<input id="lng" name="lng" placeholder="103.12345"></label>
+    </div>
+    <button type="button" id="btnGeo" class="btn ghost">ดึงพิกัด</button>
+
+    <label>รูปภาพ (ได้หลายรูป)
+      <input type="file" id="photos" accept="image/*" multiple>
+    </label>
+    <div id="pv" class="preview"></div>
+
+    <label class="consent">
+      <input type="checkbox" id="consent" required> ยินยอมให้เก็บและใช้ข้อมูลตาม Privacy Notice
+    </label>
+
+    <button class="btn primary" type="submit">ส่งรายงาน</button>
+  </form>
+
+  <script>
+    const LIFF_ID = "2008118596-nMd5qQ38";
+    const API_BASE = "https://createissue-iyipepekja-as.a.run.app"; // e.g. https://asia-southeast1-<proj>.cloudfunctions.net
+    const FIREBASE_CONFIG = {
+      apiKey: "xxx",
+      authDomain: "xxx.firebaseapp.com",
+      projectId: "xxx",
+      storageBucket: "xxx.appspot.com"
+    };
+
+    const $ = (s)=>document.querySelector(s);
+
+    // resize ภาพก่อนอัปโหลด (จำกัดด้านยาวสุด 1600px)
+    const resizeImage = (file, maxSize=1600, q=0.85)=>new Promise((resolve)=>{
+      const img = new Image();
+      img.onload = ()=>{
+        const scale = Math.min(1, maxSize/Math.max(img.width, img.height));
+        const w = Math.round(img.width*scale), h = Math.round(img.height*scale);
+        const c = document.createElement('canvas'); c.width=w; c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        c.toBlob(b=>resolve(b),'image/jpeg',q);
+      };
+      img.src = URL.createObjectURL(file);
+    });
+
+    function preview(files){
+      const pv=$("#pv"); pv.innerHTML="";
+      [...files].forEach(f=>{
+        const im=document.createElement('img');
+        im.src=URL.createObjectURL(f);
+        pv.appendChild(im);
+      });
+    }
+
+    let idToken = null;
+
+    window.addEventListener('DOMContentLoaded', async () => {
+      await liff.init({ liffId: LIFF_ID });
+      if (!liff.isLoggedIn()) liff.login(); // default redirect = Endpoint URL ของ LIFF
+
+      // โปรไฟล์ผู้ใช้
+      const prof = await liff.getProfile();
+      idToken = liff.getIDToken();
+
+      $("#uimg").src = prof.pictureUrl || "";
+      $("#uname").textContent = prof.displayName || "LINE User";
+      $("#uid").textContent = `uid: ${prof.userId}`;
+
+      $("#logout").onclick = ()=> liff.logout();
+
+      $("#btnGeo").onclick = ()=>navigator.geolocation.getCurrentPosition(
+        p=>{ $("#lat").value=p.coords.latitude.toFixed(6); $("#lng").value=p.coords.longitude.toFixed(6); },
+        ()=>alert("ดึงพิกัดไม่สำเร็จ")
+      );
+      $("#photos").addEventListener('change', e=>preview(e.target.files));
+
+      // แลก Firebase token แล้ว sign-in เพื่ออัปโหลด Storage
+      const resAuth = await fetch(API_BASE + "/authLine", {
+        method:"POST", headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ idToken })
+      });
+      const { firebaseToken } = await resAuth.json();
+      firebase.initializeApp(FIREBASE_CONFIG);
+      await firebase.auth().signInWithCustomToken(firebaseToken);
+
+      // ส่งฟอร์ม
+      $("#f").addEventListener('submit', async (e)=>{
+        e.preventDefault();
+        if (!$("#consent").checked) return alert("กรุณายินยอมก่อนส่ง");
+
+        const fd = new FormData(e.target);
+        const payload = {
+          farmId: fd.get("farmId"),
+          plotId: fd.get("plotId"),
+          crop: fd.get("crop"),
+          batch: fd.get("batch"),
+          category: fd.get("category"),
+          severity: Number(fd.get("severity") || 1),
+          description: fd.get("description"),
+          actionPlan: fd.get("actionPlan"),
+          productUsed: fd.get("productUsed"),
+          dose: fd.get("dose"),
+          phiDays: fd.get("phiDays") ? Number(fd.get("phiDays")) : null,
+          geo: {
+            lat: fd.get("lat") ? Number(fd.get("lat")) : null,
+            lng: fd.get("lng") ? Number(fd.get("lng")) : null
+          },
+          consent: true
+        };
+
+        // 1) createIssue
+        const res = await fetch(API_BASE + "/createIssue", {
+          method:"POST",
+          headers: { "Content-Type":"application/json", "Authorization":"Bearer "+idToken },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) return alert("สร้างรายการไม่สำเร็จ");
+        const { issueId, uploadPrefix } = await res.json();
+
+        // 2) upload photos
+        const files = $("#photos").files;
+        if (files.length){
+          const storage = firebase.storage().ref();
+          for (const f of files){
+            const blob = await resizeImage(f);
+            const path = `${uploadPrefix}/original/${Date.now()}-${f.name.replace(/\s+/g,'_')}`;
+            await storage.child(path).put(blob, { contentType:"image/jpeg" });
+          }
+        }
+
+        alert(`ส่งเรียบร้อย (เลขอ้างอิง: ${issueId})`);
+        if (liff.isInClient()) liff.closeWindow();
+      });
+    });
+  </script>
+</body>
+</html>
