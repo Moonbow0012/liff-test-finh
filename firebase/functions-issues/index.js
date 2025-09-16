@@ -14,47 +14,52 @@ const { pickIssuePayload } = require("./lib/validate");
 // triggers
 const { onIssuePhotoUploaded } = require("./triggers/onIssuePhotoUploaded");
 
-// CORS allowlist
-const ALLOWED = new Set([
+// CORS allowlist: ยอม localhost, ทุก *.vercel.app และโดเมนโปรดักชันของคุณ
+const ALLOWED = [
   "http://localhost:3000",
-  "https://liff-test-finh.vercel.app",  // เปลี่ยนเป็นโดเมนจริงของคุณ
-  "https://liff-test-finh-n8ql.vercel.app/" // preview domain
-]);
+  "https://liff-test-finh-n8ql.vercel.app/",
+];
+
+// dev flag (ถ้าจำเป็น) — ตั้งเป็น true ชั่วคราวถ้าจะเปิดกว้างสุด
+const DEV_ALLOW_ALL = false;
+
+function isAllowedOrigin(origin = "") {
+  try {
+    const o = new URL(origin);
+    return ALLOWED.some((rule) =>
+      rule instanceof RegExp ? rule.test(o.origin) : rule === o.origin
+    );
+  } catch {
+    return false;
+  }
+}
 
 function applyCors(req, res) {
   const origin = req.headers.origin || "";
-  if (ALLOWED.has(origin)) {
+  const allowed = DEV_ALLOW_ALL || isAllowedOrigin(origin);
+
+  if (allowed) {
     res.set("Access-Control-Allow-Origin", origin);
-    res.set("Vary", "Origin");
-    res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-    res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+    res.set("Vary", "Origin"); // ให้ CDN แคชตาม Origin
   }
-  if (req.method === "OPTIONS") { res.status(204).send(""); return true; }
+  // เฮดเดอร์มาตรฐาน
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.set("Access-Control-Max-Age", "86400"); // cache preflight 24 ชม.
+
+  if (req.method === "OPTIONS") {
+    // ถ้าไม่อนุญาต origin ก็ยังตอบ 204 กลับ (เบราว์เซอร์จะบล็อกเอง)
+    res.status(204).send("");
+    return true;
+  }
+  if (!allowed) {
+    // บอกชัด ๆ จะได้เห็นใน Logs
+    console.warn("CORS blocked for origin:", origin);
+    res.status(403).send("CORS blocked");
+    return true;
+  }
   return false;
 }
-
-/** POST /authLine -> แลก LINE id_token เป็น Firebase custom token */
-exports.authLine = onRequest({ secrets: [LINE_CHANNEL_ID] }, async (req, res) => {
-  if (applyCors(req, res)) return;
-  try {
-    if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
-    const { idToken } = req.body || {};
-    if (!idToken) return res.status(400).send("Missing idToken");
-
-    const profile = await verifyLineIdToken(idToken, LINE_CHANNEL_ID.value());
-    const uid = `line_${profile.sub}`;
-
-    await admin.auth().getUser(uid).catch(() =>
-      admin.auth().createUser({ uid, displayName: profile.name || "LINE User" })
-    );
-    const firebaseToken = await admin.auth().createCustomToken(uid, { lineSub: profile.sub });
-
-    return res.json({ firebaseToken, displayName: profile.name || null });
-  } catch (e) {
-    console.error(e);
-    return res.status(401).send("Unauthorized");
-  }
-});
 
 /** POST /createIssue -> สร้างเอกสารตามสคีม่า + คืน prefix สำหรับอัปโหลดรูป */
 exports.createIssue = onRequest({ secrets: [LINE_CHANNEL_ID] }, async (req, res) => {
