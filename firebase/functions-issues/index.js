@@ -17,7 +17,7 @@ const { onIssuePhotoUploaded } = require("./triggers/onIssuePhotoUploaded");
 // CORS allowlist: ยอม localhost, ทุก *.vercel.app และโดเมนโปรดักชันของคุณ
 const ALLOWED = [
   "http://localhost:3000",
-  "https://liff-test-finh-n8ql.vercel.app/",
+  "https://liff-test-finh-n8ql.vercel.app",
 ];
 
 // dev flag (ถ้าจำเป็น) — ตั้งเป็น true ชั่วคราวถ้าจะเปิดกว้างสุด
