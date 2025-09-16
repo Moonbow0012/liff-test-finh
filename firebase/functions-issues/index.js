@@ -18,7 +18,7 @@ const { onIssuePhotoUploaded } = require("./triggers/onIssuePhotoUploaded");
 const ALLOWED = new Set([
   "http://localhost:3000",
   "https://liff-test-finh.vercel.app",  // เปลี่ยนเป็นโดเมนจริงของคุณ
-  "https://survey.me.finh-iot.com" // preview domain
+  "https://liff-test-finh-n8ql.vercel.app/" // preview domain
 ]);
 
 function applyCors(req, res) {
