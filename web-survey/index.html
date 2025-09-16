@@ -83,36 +83,42 @@
   </form>
 
 <script>
-  // ====== CONFIG ======
-  const LIFF_ID    = "2008118596-nMd5qQ38";                   // LIFF ของคุณ
-  const AUTH_URL   = "https://authline-iyipepekja-as.a.run.app";    // functions:list
-  const CREATE_URL = "https://createissue-iyipepekja-as.a.run.app"; // functions:list
-  const FIREBASE_CONFIG = { apiKey:"xxx", authDomain:"xxx.firebaseapp.com", projectId:"xxx", storageBucket:"xxx.appspot.com" };
+  // ===== CONFIG =====
+  const LIFF_ID    = "2008118596-nMd5qQ38";
+  const AUTH_URL   = "https://authline-iyipepekja-as.a.run.app";    // from: firebase functions:list
+  const CREATE_URL = "https://createissue-iyipepekja-as.a.run.app"; // from: firebase functions:list
+  const FIREBASE_CONFIG = {
+    apiKey: "xxx",
+    authDomain: "xxx.firebaseapp.com",
+    projectId: "xxx",
+    storageBucket: "xxx.appspot.com"
+  };
   const REQUIRED_SCOPE = ['openid','profile','email'];
-  const FRESH_TTL_SEC = 60; // ต้องเหลืออายุอย่างน้อย 60s
-  const REL_LOGIN_FLAG = "fromLogin";      // query flag กันลูป
-  const REL_STORAGE_KEY = "liff.relogin";  // session key กันลูป
 
   const $ = (s)=>document.querySelector(s);
 
-  // ---------- utils ----------
-  function currentUrl(withFlagValue=null){
+  // ---- helpers ----
+  function currentUrlWithFlag(flag, val) {
     const u = new URL(location.href);
-    if (withFlagValue === null) u.searchParams.delete(REL_LOGIN_FLAG);
-    else u.searchParams.set(REL_LOGIN_FLAG, withFlagValue);
+    if (val == null) u.searchParams.delete(flag);
+    else u.searchParams.set(flag, val);
     return u.toString();
   }
-  function markRelogin(reason, ttlMs=60000){
-    sessionStorage.setItem(REL_STORAGE_KEY, JSON.stringify({ t: Date.now(), ttlMs, reason }));
+
+  // กันลูป re-login: ให้รีได้ "ครั้งเดียวต่อการโหลดหน้า"
+  const RELOGIN_FLAG = "fromLogin";
+  const REL_ATTEMPTED_KEY = "liff.relogin.once";
+  function clearReloginOnce(){ sessionStorage.removeItem(REL_ATTEMPTED_KEY); }
+  function reloginOnce(reason){
+    if (sessionStorage.getItem(REL_ATTEMPTED_KEY) === "1") {
+      alert("ไม่สามารถรับรองตัวตนได้ (กันลูปล็อกอิน) — โปรดปิดแท็บแล้วเปิดใหม่อีกครั้ง");
+      throw new Error("Relogin blocked: already attempted once. reason="+reason);
+    }
+    sessionStorage.setItem(REL_ATTEMPTED_KEY, "1");
+    const redirectUri = currentUrlWithFlag(RELOGIN_FLAG, "1");
+    liff.login({ scope: REQUIRED_SCOPE, redirectUri });
+    return new Promise(()=>{}); // redirect ออกไป
   }
-  function canRelogin(){
-    try{
-      const o = JSON.parse(sessionStorage.getItem(REL_STORAGE_KEY)||"{}");
-      if (!o.t) return true;
-      return (Date.now() - o.t) > o.ttlMs; // เว้นช่วงอย่างน้อย ttlMs
-    }catch{ return true; }
-  }
-  function clearReloginMark(){ sessionStorage.removeItem(REL_STORAGE_KEY); }
 
   // resize ภาพก่อนอัปโหลด (จำกัดด้านยาวสุด 1600px)
   const resizeImage = (file, maxSize=1600, q=0.85)=>new Promise((resolve)=>{
@@ -127,52 +133,6 @@
     img.src = URL.createObjectURL(file);
   });
 
-  // ---------- LIFF token helpers ----------
-  async function loginWithRedirect(reason){
-    // กันลูป: ถ้าเพิ่งรีไดเร็กต์มาแล้วใน 60 วิ ไม่ให้รีอีก
-    if (!canRelogin()) {
-      alert("ไม่สามารถรับรองตัวตนได้ (กันลูปล็อกอิน) — โปรดปิดแท็บแล้วเปิดใหม่อีกครั้ง");
-      throw new Error("Relogin loop prevented");
-    }
-    markRelogin(reason, 60000);
-    const redirectUri = currentUrl("1"); // ใส่ ?fromLogin=1
-    liff.login({ scope: REQUIRED_SCOPE, redirectUri });
-    return new Promise(()=>{}); // จะ redirect ออกไป
-  }
-
-  function getDecodedSafe(){
-    try { return liff.getDecodedIDToken?.(); } catch { return null; }
-  }
-
-  async function ensureFreshIdToken(minTTLsec = FRESH_TTL_SEC){
-    if (!liff.isLoggedIn()) {
-      return loginWithRedirect("not-logged-in");
-    }
-    let idToken = liff.getIDToken();
-    let decoded = getDecodedSafe();
-    const expMs = decoded?.exp ? decoded.exp * 1000 : 0;
-    const timeLeft = expMs - Date.now();
-
-    // ถ้ากลับมาจาก login แล้ว ให้ล้าง flag ออกจาก URL
-    const u = new URL(location.href);
-    if (u.searchParams.get(REL_LOGIN_FLAG) === "1") {
-      u.searchParams.delete(REL_LOGIN_FLAG);
-      history.replaceState({}, "", u.toString());
-      clearReloginMark(); // ล้าง state กันลูป
-    }
-
-    // ไม่มี token / decode ไม่ได้
-    if (!idToken || !decoded) {
-      return loginWithRedirect("no-token");
-    }
-
-    // ใกล้หมดอายุเกินไป -> login ใหม่
-    if (timeLeft <= minTTLsec * 1000) {
-      return loginWithRedirect("token-near-expire");
-    }
-    return { idToken, decoded, timeLeft };
-  }
-
   async function exchangeToFirebaseToken(idToken){
     const res = await fetch(AUTH_URL, {
       method:"POST",
@@ -182,22 +142,39 @@
     const txt = await res.text();
     let js = {}; try { js = JSON.parse(txt); } catch {}
     if (!res.ok) {
-      // ถ้า backend บอก expired ให้รี-ล็อกอิน (แต่กันลูปไว้แล้ว)
-      if ((js?.error || txt || "").toLowerCase().includes("expired")) {
-        return loginWithRedirect("backend-says-expired");
-      }
+      // ถ้า backend บอก expired -> re-login 1 ครั้ง
+      const msg = (js?.error || txt || "").toLowerCase();
+      if (msg.includes("expired")) return reloginOnce("authLine-expired");
       throw new Error("authLine failed: " + (js.error || txt));
     }
     return js.firebaseToken;
   }
 
-  // ---------- main ----------
   window.addEventListener('DOMContentLoaded', async () => {
     try {
       await liff.init({ liffId: LIFF_ID });
 
-      // ขอ id_token ที่สด
-      const { idToken, decoded } = await ensureFreshIdToken();
+      // ถ้ากลับมาจาก login ให้ล้าง flag กันลูป
+      const u = new URL(location.href);
+      if (u.searchParams.get(RELOGIN_FLAG) === "1") {
+        u.searchParams.delete(RELOGIN_FLAG);
+        history.replaceState({}, "", u.toString());
+        clearReloginOnce();
+      }
+
+      // ยังไม่ล็อกอินเลย -> login (ครั้งแรกเท่านั้น)
+      if (!liff.isLoggedIn()) {
+        return reloginOnce("not-logged-in");
+      }
+
+      // ขอ id_token; ถ้าไม่ได้ -> re-login 1 ครั้ง
+      let idToken = liff.getIDToken();
+      if (!idToken) {
+        return reloginOnce("no-id-token");
+      }
+
+      // DEBUG: ดู aud ว่าตรง Channel ID ไหม (ตัวเลข) และ exp
+      const decoded = liff.getDecodedIDToken?.();
       console.log("Decoded ID token:", decoded);
 
       // โปรไฟล์
@@ -207,6 +184,7 @@
       $("#uid").textContent = `uid: ${prof.userId}`;
       $("#logout").onclick = ()=> { liff.logout(); location.reload(); };
 
+      // ปุ่ม geo + preview
       $("#btnGeo").onclick = ()=>navigator.geolocation.getCurrentPosition(
         p=>{ $("#lat").value=p.coords.latitude.toFixed(6); $("#lng").value=p.coords.longitude.toFixed(6); },
         ()=>alert("ดึงพิกัดไม่สำเร็จ")
@@ -216,8 +194,10 @@
         [...files].forEach(f=>{ const im=document.createElement('img'); im.src=URL.createObjectURL(f); pv.appendChild(im); });
       });
 
-      // แลก Firebase token
+      // แลก Firebase custom token
       const firebaseToken = await exchangeToFirebaseToken(idToken);
+
+      // init Firebase + sign-in
       firebase.initializeApp(FIREBASE_CONFIG);
       await firebase.auth().signInWithCustomToken(firebaseToken);
 
@@ -227,8 +207,9 @@
         try {
           if (!$("#consent").checked) return alert("กรุณายินยอมก่อนส่ง");
 
-          // เช็ค token สดอีกครั้งก่อนยิง createIssue
-          const { idToken: freshIdToken } = await ensureFreshIdToken();
+          // ดึง id_token สด ๆ อีกรอบ (ถ้า LIFF หมดอายุจริง ๆ จะได้ re-login ที่นี่ทีเดียว)
+          idToken = liff.getIDToken();
+          if (!idToken) return reloginOnce("no-id-token-on-submit");
 
           const fd = new FormData(e.target);
           const n = (v)=> (v === "" || v === null) ? null : Number(v);
@@ -254,15 +235,17 @@
           // 1) createIssue
           const res = await fetch(CREATE_URL, {
             method:"POST",
-            headers: { "Content-Type":"application/json", "Authorization":"Bearer "+freshIdToken },
+            headers: {
+              "Content-Type":"application/json",
+              "Authorization":"Bearer "+idToken
+            },
             body: JSON.stringify(payload)
           });
           const txt = await res.text();
           let js = {}; try { js = JSON.parse(txt); } catch {}
           if (!res.ok) {
-            if ((js?.error || txt || "").toLowerCase().includes("expired")) {
-              return loginWithRedirect("backend-says-expired-2");
-            }
+            const msg = (js?.error || txt || "").toLowerCase();
+            if (msg.includes("expired")) return reloginOnce("createIssue-expired");
             throw new Error("createIssue failed: " + (js.error || txt));
           }
           const { issueId, uploadPrefix } = js;
