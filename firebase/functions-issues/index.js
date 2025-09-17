@@ -4,6 +4,17 @@ const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 
+async function getRuntimeServiceAccountEmail() {
+  try {
+    const fetch = (...a) => import("node-fetch").then(({ default: f }) => f(...a));
+    const r = await fetch(
+      "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email",
+      { headers: { "Metadata-Flavor": "Google" } }
+    );
+    return await r.text();
+  } catch { return null; }
+}
+
 try { admin.app(); } catch { admin.initializeApp(); }
 
 const LINE_CHANNEL_ID = defineSecret("LINE_CHANNEL_ID");
@@ -216,8 +227,23 @@ exports.diagVerify = onRequest({ secrets: [LINE_CHANNEL_ID] }, async (req, res) 
 const { onIssuePhotoUploaded } = require("./triggers/onIssuePhotoUploaded");
 exports.onIssuePhotoUploaded = onIssuePhotoUploaded({ admin });
 
+exports.diagWhoami = onRequest(async (req, res) => {
+  const sa = await getRuntimeServiceAccountEmail();
+  res.json({
+    projectId_env: process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT,
+    runtimeServiceAccount: sa,
+  });
+});
+
 // ---------- /ping ----------
 exports.ping = onRequest((req, res) => {
   if (applyCors(req, res)) return;
   res.json({ ok:true, codebase:"issues", at:new Date().toISOString() });
+});
+
+exports.diagWhoami = onRequest(async (req, res) => {
+  res.json({
+    projectId: process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT,
+    runtimeServiceAccount: await getRuntimeServiceAccountEmail(),
+  });
 });
