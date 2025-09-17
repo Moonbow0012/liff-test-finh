@@ -1,3 +1,4 @@
+// firebase/functions-issues/index.js
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
@@ -47,6 +48,7 @@ function applyCors(req, res) {
 }
 /* ================================ */
 
+/** POST /authLine -> แลก LINE id_token เป็น Firebase custom token */
 exports.authLine = onRequest({ secrets: [LINE_CHANNEL_ID] }, async (req, res) => {
   if (applyCors(req, res)) return;
   try {
@@ -54,9 +56,13 @@ exports.authLine = onRequest({ secrets: [LINE_CHANNEL_ID] }, async (req, res) =>
     const { idToken } = req.body || {};
     if (!idToken) return res.status(400).send("Missing idToken");
 
-    const profile = await verifyLineIdToken(idToken, LINE_CHANNEL_ID.value());
+    // ใช้ Secret แบบ trim ป้องกันช่องว่างเผลอพิมพ์เกิน
+    const channelId = (LINE_CHANNEL_ID.value() || "").trim();
+
+    const profile = await verifyLineIdToken(idToken, channelId); // ถ้า client_id/aud ไม่ตรง จะ throw
     const uid = `line_${profile.sub}`;
 
+    // ensure user
     await admin.auth().getUser(uid).catch(() =>
       admin.auth().createUser({ uid, displayName: profile.name || "LINE User" })
     );
@@ -65,11 +71,12 @@ exports.authLine = onRequest({ secrets: [LINE_CHANNEL_ID] }, async (req, res) =>
     return res.json({ firebaseToken, displayName: profile.name || null });
   } catch (e) {
     console.error("authLine.error", e?.message || e);
-    // ส่งรายละเอียดกลับไป (ช่วง debug) เพื่อจะได้เห็นว่า verify พลาดอะไร
+    // ส่งรายละเอียดกลับ (โหมดดีบัก); โปรดักชันค่อยเปลี่ยนเป็นข้อความกลาง ๆ ได้
     return res.status(401).json({ ok: false, error: String(e?.message || e) });
   }
 });
 
+/** POST /createIssue -> สร้างเอกสารตามสคีม่า + คืน prefix สำหรับอัปโหลดรูป */
 exports.createIssue = onRequest({ secrets: [LINE_CHANNEL_ID] }, async (req, res) => {
   if (applyCors(req, res)) return;
   const t0 = Date.now();
@@ -79,7 +86,8 @@ exports.createIssue = onRequest({ secrets: [LINE_CHANNEL_ID] }, async (req, res)
     const idToken = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
     if (!idToken) { console.warn("createIssue: missing Authorization"); return res.status(401).send("Missing Authorization"); }
 
-    const profile = await verifyLineIdToken(idToken, LINE_CHANNEL_ID.value());
+    const channelId = (LINE_CHANNEL_ID.value() || "").trim();
+    const profile = await verifyLineIdToken(idToken, channelId);
     const uid = `line_${profile.sub}`;
 
     const b = pickIssuePayload(req.body || {});
@@ -110,8 +118,34 @@ exports.createIssue = onRequest({ secrets: [LINE_CHANNEL_ID] }, async (req, res)
   }
 });
 
+/** POST /diagVerify -> ยิง LINE verify โดยตรง (debug) */
+exports.diagVerify = onRequest({ secrets: [LINE_CHANNEL_ID] }, async (req, res) => {
+  if (applyCors(req, res)) return;
+  try {
+    if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+    const idToken = (req.body && req.body.idToken) || "";
+    const channelId = (LINE_CHANNEL_ID.value() || "").trim();
+
+    const fetch = (...a) => import("node-fetch").then(({ default: f }) => f(...a));
+    const r = await fetch("https://api.line.me/oauth2/v2.1/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ id_token: idToken, client_id: channelId })
+    });
+    const body = await r.json().catch(() => ({}));
+    res.status(r.status).json({
+      usedClientId: channelId, // โชว์ให้เห็นตรง ๆ ว่าเซิร์ฟเวอร์ใช้ client_id อะไร
+      body
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// Storage trigger ทำ thumbnail + เติม photos[]
 exports.onIssuePhotoUploaded = onIssuePhotoUploaded({ admin });
 
+// ping สำหรับเทส URL อย่างง่าย
 exports.ping = onRequest((req, res) => {
   if (applyCors(req, res)) return;
   res.json({ ok: true, codebase: "issues", at: new Date().toISOString() });
