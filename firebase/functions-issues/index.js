@@ -5,9 +5,17 @@ const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 
 try { admin.app(); } catch { admin.initializeApp(); }
-setGlobalOptions({ region: "asia-southeast1", memory: "512MiB", timeoutSeconds: 60 });
 
 const LINE_CHANNEL_ID = defineSecret("LINE_CHANNEL_ID");
+const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT || "finh-iot-ai";
+
+setGlobalOptions({
+  region: "asia-southeast1",
+  memory: "512MiB",
+  timeoutSeconds: 60,
+  // บังคับให้รันด้วย App Engine default service account
+  serviceAccount: `${PROJECT_ID}@appspot.gserviceaccount.com`,
+});
 
 // ---- utils: verify with LINE + peek aud from JWT (debug) ----
 function peekAud(idToken) {
