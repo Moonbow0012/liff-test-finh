@@ -9,144 +9,182 @@ setGlobalOptions({ region: "asia-southeast1", memory: "512MiB", timeoutSeconds: 
 
 const LINE_CHANNEL_ID = defineSecret("LINE_CHANNEL_ID");
 
-const { verifyLineIdToken } = require("./lib/line");
-const { pickIssuePayload } = require("./lib/validate");
-const { onIssuePhotoUploaded } = require("./triggers/onIssuePhotoUploaded");
+// ===== verify กับ LINE แบบ inline (เหมือน diagVerify) =====
+async function verifyWithLine(idToken, channelIdRaw) {
+  const channelId = String(channelIdRaw || "").trim();
+  const fetch = (...a) => import("node-fetch").then(({ default: f }) => f(...a));
+  const r = await fetch("https://api.line.me/oauth2/v2.1/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ id_token: idToken, client_id: channelId })
+  });
+  const body = await r.json().catch(() => ({}));
+  const ok = r.ok && body?.sub && (body?.aud === channelId || body?.client_id === channelId);
+  if (!ok) throw new Error(`LINE verify failed (${r.status}) cid=${channelId} : ${JSON.stringify(body)}`);
+  return body; // { sub, aud, exp, ... }
+}
 
-/* ===== CORS: localhost + ทุก *.vercel.app (+เพิ่มโดเมนจริงได้) ===== */
+/* ===== CORS ===== */
 const ALLOWED = [
   /^https?:\/\/localhost(:\d+)?$/i,
   /^https:\/\/([a-z0-9-]+\.)*vercel\.app$/i,
-  // ตัวอย่าง: เพิ่มโดเมนโปรดักชันของคุณ
+  // เพิ่มโดเมนโปรดักชันได้ที่นี่ เช่น:
   // /^https:\/\/survey\.yourbrand\.com$/i,
 ];
 const DEV_ALLOW_ALL = false;
-
 function isAllowedOrigin(origin = "") {
-  try {
-    const u = new URL(origin);
-    const o = `${u.protocol}//${u.host}`; // ไม่มี / ท้าย
-    return ALLOWED.some(re => re.test(o));
-  } catch { return false; }
+  try { const u = new URL(origin); return ALLOWED.some(re => re.test(`${u.protocol}//${u.host}`)); }
+  catch { return false; }
 }
-
 function applyCors(req, res) {
   const origin = req.headers.origin || "";
   const hasOrigin = !!origin;
   const allowed = DEV_ALLOW_ALL || (hasOrigin && isAllowedOrigin(origin));
-
   if (allowed) res.set("Access-Control-Allow-Origin", origin);
   res.set("Vary", "Origin");
   res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   res.set("Access-Control-Max-Age", "86400");
-
   if (req.method === "OPTIONS") { res.status(204).send(""); return true; }
-  if (!hasOrigin) return false; // เปิด ping ผ่านเบราเซอร์ได้
-  if (!allowed) { console.warn("CORS blocked for origin:", origin); res.status(403).send("CORS blocked"); return true; }
+  if (!hasOrigin) return false;
+  if (!allowed) { console.warn("CORS blocked:", origin); res.status(403).send("CORS blocked"); return true; }
   return false;
 }
-/* ================================ */
+/* ================= */
 
-/** POST /authLine -> แลก LINE id_token เป็น Firebase custom token */
+// ---------- /authLine : แลก LINE id_token -> Firebase custom token ----------
 exports.authLine = onRequest({ secrets: [LINE_CHANNEL_ID] }, async (req, res) => {
   if (applyCors(req, res)) return;
+  if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+
+  const channelId = (LINE_CHANNEL_ID.value() || "").trim();
   try {
-    if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
     const { idToken } = req.body || {};
-    if (!idToken) return res.status(400).send("Missing idToken");
+    if (!idToken) return res.status(400).json({ ok:false, where:"authLine/parse", error:"Missing idToken" });
 
-    // ใช้ Secret แบบ trim ป้องกันช่องว่างเผลอพิมพ์เกิน
-    const channelId = (LINE_CHANNEL_ID.value() || "").trim();
+    // STEP 1: verify กับ LINE
+    let profile;
+    try {
+      profile = await verifyWithLine(idToken, channelId);
+    } catch (e) {
+      console.error("authLine.verify", e?.message || e);
+      return res.status(401).json({ ok:false, where:"authLine/verify", error:String(e?.message || e) });
+    }
 
-    const profile = await verifyLineIdToken(idToken, channelId); // ถ้า client_id/aud ไม่ตรง จะ throw
     const uid = `line_${profile.sub}`;
 
-    // ensure user
-    await admin.auth().getUser(uid).catch(() =>
-      admin.auth().createUser({ uid, displayName: profile.name || "LINE User" })
-    );
-    const firebaseToken = await admin.auth().createCustomToken(uid, { lineSub: profile.sub });
+    // STEP 2: ensure user
+    try {
+      await admin.auth().getUser(uid);
+    } catch (e) {
+      if (e && e.code === "auth/user-not-found") {
+        try {
+          await admin.auth().createUser({ uid, displayName: profile.name || "LINE User" });
+        } catch (e2) {
+          console.error("authLine.createUser", e2?.message || e2);
+          return res.status(500).json({ ok:false, where:"authLine/createUser", error:String(e2?.message || e2) });
+        }
+      } else {
+        console.error("authLine.getUser", e?.message || e);
+        return res.status(500).json({ ok:false, where:"authLine/getUser", error:String(e?.message || e) });
+      }
+    }
 
-    return res.json({ firebaseToken, displayName: profile.name || null });
+    // STEP 3: ออก custom token
+    let firebaseToken;
+    try {
+      firebaseToken = await admin.auth().createCustomToken(uid, { lineSub: profile.sub });
+    } catch (e) {
+      console.error("authLine.customToken", e?.message || e);
+      return res.status(500).json({ ok:false, where:"authLine/customToken", error:String(e?.message || e) });
+    }
+
+    return res.json({ ok:true, firebaseToken, displayName: profile.name || null });
   } catch (e) {
-    console.error("authLine.error", e?.message || e);
-    // ส่งรายละเอียดกลับ (โหมดดีบัก); โปรดักชันค่อยเปลี่ยนเป็นข้อความกลาง ๆ ได้
-    return res.status(401).json({ ok: false, error: String(e?.message || e) });
+    console.error("authLine.unknown", e?.message || e);
+    return res.status(500).json({ ok:false, where:"authLine/unknown", error:String(e?.message || e) });
   }
 });
 
-/** POST /createIssue -> สร้างเอกสารตามสคีม่า + คืน prefix สำหรับอัปโหลดรูป */
+// ---------- /createIssue ----------
 exports.createIssue = onRequest({ secrets: [LINE_CHANNEL_ID] }, async (req, res) => {
   if (applyCors(req, res)) return;
+  if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+
   const t0 = Date.now();
+  const channelId = (LINE_CHANNEL_ID.value() || "").trim();
+
   try {
-    if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
-
     const idToken = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
-    if (!idToken) { console.warn("createIssue: missing Authorization"); return res.status(401).send("Missing Authorization"); }
+    if (!idToken) return res.status(401).json({ ok:false, where:"createIssue/auth", error:"Missing Authorization" });
 
-    const channelId = (LINE_CHANNEL_ID.value() || "").trim();
-    const profile = await verifyLineIdToken(idToken, channelId);
+    let profile;
+    try {
+      profile = await verifyWithLine(idToken, channelId);
+    } catch (e) {
+      console.error("createIssue.verify", e?.message || e);
+      return res.status(401).json({ ok:false, where:"createIssue/verify", error:String(e?.message || e) });
+    }
     const uid = `line_${profile.sub}`;
 
-    const b = pickIssuePayload(req.body || {});
-    console.log("createIssue.start", { uid, farmId: b.farmId, plotId: b.plotId, category: b.category });
+    let b;
+    try {
+      b = require("./lib/validate").pickIssuePayload(req.body || {});
+    } catch (e) {
+      return res.status(400).json({ ok:false, where:"createIssue/validate", error:String(e?.message || e) });
+    }
 
-    const db = admin.firestore();
-    const doc = {
-      ...b,
-      reporter: { uid, displayName: profile.name || null },
-      status: "OPEN",
-      photos: [],
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      createdBy: uid,
-      reviewedAt: null, reviewedBy: null, revision: 0
-    };
-    const ref = await db.collection("farm_issues").add(doc);
-    const issueId = ref.id;
+    try {
+      const db = admin.firestore();
+      const doc = {
+        ...b,
+        reporter: { uid, displayName: profile.name || null },
+        status: "OPEN",
+        photos: [],
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdBy: uid,
+        reviewedAt: null, reviewedBy: null, revision: 0
+      };
+      const ref = await db.collection("farm_issues").add(doc);
+      const issueId = ref.id;
 
-    console.log("createIssue.done", { issueId, ms: Date.now() - t0 });
-    return res.json({
-      issueId,
-      uploadPrefix: `issues/${b.farmId}/${issueId}`,
-      storageBucket: admin.app().options.storageBucket
-    });
+      console.log("createIssue.done", { issueId, ms: Date.now() - t0 });
+      return res.json({
+        ok: true,
+        issueId,
+        uploadPrefix: `issues/${b.farmId}/${issueId}`,
+        storageBucket: admin.app().options.storageBucket
+      });
+    } catch (e) {
+      console.error("createIssue.firestore", e?.message || e);
+      return res.status(500).json({ ok:false, where:"createIssue/firestore", error:String(e?.message || e) });
+    }
   } catch (e) {
-    console.error("createIssue.error", e?.message || e);
-    return res.status(400).send(e.message || "Bad Request");
+    console.error("createIssue.unknown", e?.message || e);
+    return res.status(500).json({ ok:false, where:"createIssue/unknown", error:String(e?.message || e) });
   }
 });
 
-/** POST /diagVerify -> ยิง LINE verify โดยตรง (debug) */
+// ---------- /diagVerify (debug ตรง ๆ) ----------
 exports.diagVerify = onRequest({ secrets: [LINE_CHANNEL_ID] }, async (req, res) => {
   if (applyCors(req, res)) return;
+  if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
   try {
-    if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
     const idToken = (req.body && req.body.idToken) || "";
     const channelId = (LINE_CHANNEL_ID.value() || "").trim();
-
-    const fetch = (...a) => import("node-fetch").then(({ default: f }) => f(...a));
-    const r = await fetch("https://api.line.me/oauth2/v2.1/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ id_token: idToken, client_id: channelId })
-    });
-    const body = await r.json().catch(() => ({}));
-    res.status(r.status).json({
-      usedClientId: channelId, // โชว์ให้เห็นตรง ๆ ว่าเซิร์ฟเวอร์ใช้ client_id อะไร
-      body
-    });
+    const body = await verifyWithLine(idToken, channelId);
+    res.json({ usedClientId: channelId, body });
   } catch (e) {
-    res.status(500).json({ ok: false, error: String(e?.message || e) });
+    res.status(401).json({ ok:false, where:"diagVerify", error:String(e?.message || e) });
   }
 });
 
-// Storage trigger ทำ thumbnail + เติม photos[]
+// ---------- Storage trigger ----------
+const { onIssuePhotoUploaded } = require("./triggers/onIssuePhotoUploaded");
 exports.onIssuePhotoUploaded = onIssuePhotoUploaded({ admin });
 
-// ping สำหรับเทส URL อย่างง่าย
+// ---------- /ping ----------
 exports.ping = onRequest((req, res) => {
   if (applyCors(req, res)) return;
-  res.json({ ok: true, codebase: "issues", at: new Date().toISOString() });
+  res.json({ ok:true, codebase:"issues", at:new Date().toISOString() });
 });
