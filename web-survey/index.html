@@ -3,278 +3,417 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>แบบสอบถามปัญหาฟาร์ม</title>
+  <title>GAqP Self-Audit (Wolffia)</title>
   <link rel="stylesheet" href="./styles.css"/>
-  <!-- SDKs โหลดแบบ defer -->
   <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.13.1/firebase-auth-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.13.1/firebase-storage-compat.js"></script>
+  <style>
+    /* เสริมสไตล์ให้ฟอร์มอ่านง่าย */
+    body { font-family: system-ui, sans-serif; background:#f7faf9; color:#0f172a; }
+    .hdr { display:flex; gap:12px; align-items:center; padding:12px 16px; background:#fff; border-bottom:1px solid #e5e7eb; position:sticky; top:0; z-index:10; }
+    .logo { height:36px; }
+    .wrap { max-width: 900px; margin: 16px auto 80px; padding: 0 12px; }
+    .card { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:14px; margin:12px 0; box-shadow: 0 1px 0 rgba(16,24,40,.04); }
+    .row { display:flex; gap:12px; flex-wrap:wrap; }
+    label.inline { display:flex; align-items:center; gap:8px; }
+    input[type="text"], input[type="number"], textarea, select { width:100%; padding:10px; border:1px solid #d1d5db; border-radius:10px; background:#fff; }
+    textarea { min-height:72px; }
+    .btn { appearance:none; border:1px solid #0ea5e9; background:#0ea5e9; color:#fff; border-radius:10px; padding:10px 14px; cursor:pointer; }
+    .btn.ghost { background:#fff; color:#0ea5e9; }
+    .btn.outline { background:#fff; border-color:#94a3b8; color:#334155; }
+    .muted { color:#64748b; font-size:12px; }
+    .sec { border:1px solid #e2e8f0; border-radius:12px; margin:10px 0; overflow:hidden; }
+    .sec-hdr { background:#f1f5f9; padding:10px 12px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; }
+    .sec-body { padding:10px 12px; display:none; }
+    .q { border-top:1px dashed #e5e7eb; padding:10px 0; }
+    .q:first-child { border-top:0; }
+    .q-title { font-weight:600; margin-bottom:8px; }
+    .q-grid { display:grid; grid-template-columns: 1fr; gap:8px; }
+    .preview { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
+    .preview img { width:84px; height:84px; object-fit:cover; border-radius:8px; border:1px solid #e5e7eb; }
+    .sticky-foot { position:fixed; left:0; right:0; bottom:0; background:#ffffffd9; backdrop-filter: blur(6px);
+      border-top:1px solid #e5e7eb; padding:10px 12px; display:flex; justify-content:center; gap:10px; }
+    .acc { transform: rotate(0deg); transition: .2s; }
+    .acc.open { transform: rotate(90deg); }
+    .pill { background:#eef2ff; color:#3730a3; font-size:12px; padding:4px 8px; border-radius:999px; }
+  </style>
 </head>
 <body>
   <header class="hdr">
     <img src="./finh_logo.png" alt="logo" class="logo" onerror="this.style.display='none'"/>
-    <h1>แจ้งปัญหาฟาร์ม</h1>
+    <div>
+      <div style="font-weight:700">GAqP Self-Audit (Wolffia)</div>
+      <div class="muted">แบบประเมินระบบการเลี้ยงเบื้องต้น (11 หมวด)</div>
+    </div>
   </header>
 
-  <section id="userCard" class="card user">
-    <img id="uimg" class="avatar" alt="avatar"/>
-    <div>
-      <div id="uname" class="name">...</div>
-      <div id="uid" class="uid muted">uid: -</div>
-    </div>
-    <button id="logout" class="btn outline">ออกจากระบบ</button>
-  </section>
+  <div class="wrap">
+    <!-- การ์ดผู้ใช้ -->
+    <section id="userCard" class="card">
+      <div class="row" style="align-items:center; justify-content:space-between;">
+        <div class="row" style="align-items:center;">
+          <img id="uimg" class="avatar" alt="avatar" style="width:40px;height:40px;border-radius:999px;border:1px solid #e5e7eb;object-fit:cover"/>
+          <div>
+            <div id="uname" style="font-weight:600">...</div>
+            <div id="uid" class="muted">uid: -</div>
+          </div>
+        </div>
+        <button id="logout" class="btn outline">ออกจากระบบ</button>
+      </div>
+    </section>
 
-  <form id="f" class="card form">
-    <div class="row">
-      <label>ฟาร์ม (farmId)<input name="farmId" required placeholder="เช่น farm-1"></label>
-      <label>แปลง (plotId)<input name="plotId" required placeholder="เช่น P01"></label>
-    </div>
+    <!-- ข้อมูลฟาร์ม -->
+    <section class="card">
+      <div class="row">
+        <label style="flex:1">ฟาร์ม (farmId)<br><input name="farmId" id="farmId" required placeholder="เช่น farm-1"></label>
+        <label style="flex:1">แปลง (plotId)<br><input name="plotId" id="plotId" required placeholder="เช่น P01"></label>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label style="flex:1">พิกัดละติจูด (lat)<br><input id="lat" placeholder="16.12345"></label>
+        <label style="flex:1">ลองจิจูด (lng)<br><input id="lng" placeholder="103.12345"></label>
+        <button id="btnGeo" class="btn ghost" type="button" title="ดึงพิกัดจากอุปกรณ์">ดึงพิกัด</button>
+      </div>
+    </section>
 
-    <div class="row">
-      <label>ชนิดพืช (crop)<input name="crop" placeholder="เช่น lettuce"></label>
-      <label>รุ่นผลิต (batch)<input name="batch" placeholder="เช่น 2025-09-A"></label>
-    </div>
+    <!-- แบบประเมิน 11 หมวด -->
+    <form id="auditForm" class="card" style="padding:0">
+      <div id="sections"></div>
+      <div style="padding:12px">
+        <label class="inline"><input type="checkbox" id="consent" required> ยินยอมให้เก็บและใช้ข้อมูลตาม Privacy Notice</label>
+      </div>
+    </form>
+  </div>
 
-    <label>ประเภทปัญหา
-      <select name="category" required>
-        <option value="">-- เลือก --</option>
-        <option>WEED</option><option>PEST</option>
-        <option>DISEASE</option><option>NUTRIENT</option>
-        <option>OTHER</option>
-      </select>
-    </label>
-
-    <label>ความรุนแรง (1-5)
-      <input type="number" name="severity" min="1" max="5" value="1" required>
-    </label>
-
-    <label>รายละเอียด
-      <textarea name="description" rows="3" required></textarea>
-    </label>
-
-    <div class="row">
-      <label>วิธีแก้ / แผนดำเนินการ<input name="actionPlan"></label>
-      <label>สาร/ผลิตภัณฑ์ที่ใช้<input name="productUsed"></label>
-    </div>
-
-    <div class="row">
-      <label>อัตราใช้ (dose)<input name="dose" placeholder="เช่น 60 ml/20L"></label>
-      <label>PHI (วัน)<input type="number" name="phiDays" min="0"></label>
-    </div>
-
-    <div class="row">
-      <label>ละติจูด (lat)<input id="lat" name="lat" placeholder="16.12345"></label>
-      <label>ลองจิจูด (lng)<input id="lng" name="lng" placeholder="103.12345"></label>
-    </div>
-    <button type="button" id="btnGeo" class="btn ghost">ดึงพิกัด</button>
-
-    <label>รูปภาพ (ได้หลายรูป)
-      <input type="file" id="photos" accept="image/*" capture="environment" multiple>
-    </label>
-    <div id="pv" class="preview"></div>
-
-    <label class="consent">
-      <input type="checkbox" id="consent" required> ยินยอมให้เก็บและใช้ข้อมูลตาม Privacy Notice
-    </label>
-
-    <button class="btn primary" type="submit">ส่งรายงาน</button>
-  </form>
+  <div class="sticky-foot">
+    <span id="score" class="pill">ผ่าน 0 / 0</span>
+    <button id="submitBtn" class="btn">ส่งแบบประเมิน</button>
+  </div>
 
 <script>
-  // ===== CONFIG =====
-  const LIFF_ID    = "2008118596-nMd5qQ38"; // <- LIFF ID ของคุณ
-  const AUTH_URL   = "https://authline-iyipepekja-as.a.run.app";    // functions URL จริง
-  const CREATE_URL = "https://createissue-iyipepekja-as.a.run.app"; // functions URL จริง
-  const FIREBASE_CONFIG = {
-    apiKey: "AIzaSyCnNQdOzThqmT3Wgvir2x4yrpiygKQKbV8",
-    authDomain: "finh-iot-ai.firebaseapp.com",
-    projectId: "finh-iot-ai",
-    storageBucket: "finh-iot-ai.firebasestorage.app"   // ✅ ต้องเป็น .appspot.com
+/* ======= ตั้งค่าโปรเจกต์คุณ ======= */
+const LIFF_ID    = "PUT_YOUR_LIFF_ID"; // เช่น "2008xxxxxx-xxxxx"
+const AUTH_URL   = "https://authline-xxxxx-as.a.run.app";     // /authLine
+const CREATE_URL = "https://createissue-xxxxx-as.a.run.app";  // /createIssue (ใช้เก็บ prefix + issueId)
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSy...YOUR...",
+  authDomain: "your-project.firebaseapp.com",
+  projectId: "your-project",
+  storageBucket: "your-project.firebasestorage.app" // หรือ .appspot.com ตามโปรเจกต์คุณ
+};
+/* ======= จบส่วนตั้งค่า ======= */
+
+const REQUIRED_SCOPE = ['openid','profile','email'];
+const $ = (s)=>document.querySelector(s);
+
+function resizeImage(file, maxSize=1600, q=0.85){return new Promise(r=>{
+  const img = new Image();
+  img.onload = ()=>{
+    const scale = Math.min(1, maxSize/Math.max(img.width, img.height));
+    const w = Math.round(img.width*scale), h = Math.round(img.height*scale);
+    const c = document.createElement('canvas'); c.width=w; c.height=h;
+    c.getContext('2d').drawImage(img,0,0,w,h);
+    c.toBlob(b=>r(b),'image/jpeg',q);
   };
+  img.src = URL.createObjectURL(file);
+});}
 
-  const REQUIRED_SCOPE = ['openid','profile','email'];
-  const $ = (s)=>document.querySelector(s);
-  const LOGIN_FLAG = "fromLogin";
-  const RELOGIN_ONCE_KEY = "liff.relogin.once.v2";
+// ===== นิยามโครงสร้าง 11 หมวดจากที่คุณให้ =====
+const SECTIONS = [
+  { id:1, title:"สถานที่ตั้งฟาร์ม", items:[
+    "พื้นที่ตั้งฟาร์มอยู่ใกล้แหล่งมลพิษหรือแหล่งปนเปื้อน เช่น โรงงานอุตสาหกรรม เกษตรกรรมที่ใช้สารเคมี หรือไม่",
+    "หากพื้นที่มีความเสี่ยง เจ้าของฟาร์มมีมาตรการป้องกันและบันทึกหลักฐานไว้หรือไม่",
+  ]},
+  { id:2, title:"การเตรียมบ่อเพาะเลี้ยง", items:[
+    "บ่อเลี้ยงมีความแข็งแรงและใช้วัสดุหรือโครงสร้างที่ปลอดภัยต่อผู้บริโภคหรือไม่",
+    "มีกระบวนการกำจัดวัชพืชหรือสิ่งแปลกปลอมก่อนเพาะเลี้ยงหรือไม่",
+    "หากมีการใช้สารเคมี ผู้ปฏิบัติงานได้ปฏิบัติตามการใช้งานตามฉลากและมีบันทึกการใช้ทุกครั้งหรือไม่",
+  ]},
+  { id:3, title:"การจัดการน้ำ", items:[
+    "น้ำที่ใช้สำหรับการเลี้ยงมาจากแหล่งที่มาที่มีความเสี่ยงต่อการปนเปื้อนของสารเคมี จุลินทรีย์ก่อโรคหรือไม่",
+    "มีการตรวจวัดคุณภาพน้ำอย่างสม่ำเสมอ (สี กลิ่น ความใส หรือผลแลบ) และบันทึกข้อมูลไว้หรือไม่",
+    "น้ำที่ใช้สำหรับกระบวนการล้างผลผลิต มาจากแหล่งที่มาที่มีความเสี่ยงต่อการปนเปื้อนของสารเคมี จุลินทรีย์ก่อโรคหรือไม่",
+  ]},
+  { id:4, title:"สุขลักษณะภายในฟาร์ม", items:[
+    "มีการจัดการขยะและภาชนะใช้แล้วอย่างเหมาะสมหรือไม่ เช่น การไม่เผา การไม่ใช้ซ้ำ",
+    "มีมาตรการป้องกันสัตว์พาหะ เช่น หนู แมลง สัตว์เลี้ยง หรือไม่",
+    "มีกระบวนการแยกเก็บปัจจัยการผลิตออกจากพื้นที่เก็บผลผลิตหรือไม่",
+  ]},
+  { id:5, title:"การจัดการเพาะเลี้ยง", items:[
+    "ใช้พันธุ์ผำจากแหล่งที่เชื่อถือได้หรือไม่",
+    "มีกระบวนการเฝ้าระวังศัตรูพืช วัชพืชน้ำ และสิ่งแปลกปลอมหรือไม่",
+    "มีการบันทึกความผิดปกติที่เกิดขึ้นในกระบวนการเลี้ยงและการแก้ไขเมื่อพบความผิดปกติหรือไม่",
+  ]},
+  { id:6, title:"ปุ๋ยและธาตุอาหารเสริม", items:[
+    "ใช้ปุ๋ยหรือสาร ธาตุอาหารที่ขึ้นทะเบียนถูกต้องและปลอดภัยหรือไม่",
+    "มีการใช้มูลสัตว์สดในกระบวนการเพาะเลี้ยงหรือไม่",
+    "มีการทำปุ๋ยหมักเองหรือไม่",
+    "มีบันทึกบัญชีรายการปุ๋ยและการใช้ครบถ้วนหรือไม่",
+  ]},
+  { id:7, title:"การจัดการน้ำทิ้งและดินเลน", items:[
+    "มีการปล่อยน้ำทิ้งลงสู่แหล่งน้ำสาธารณะโดยตรงหรือไม่",
+    "มีมาตรการจัดการ/กักเก็บน้ำทิ้งอย่างถูกต้องหรือไม่",
+    "มีกระบวนการกำจัดดินเลนทำอย่างถูกวิธีและไม่ก่อให้เกิดมลภาวะหรือไม่",
+  ]},
+  { id:8, title:"การเก็บเกี่ยวและหลังเก็บเกี่ยว", items:[
+    "ใช้อุปกรณ์เก็บเกี่ยวที่สะอาดและถูกสุขลักษณะหรือไม่",
+    "มีการล้างผำด้วยน้ำสะอาดหลังเก็บเกี่ยวหรือไม่",
+    "มีการวางผลผลิตบนพื้นดินโดยตรงหรือไม่",
+  ]},
+  { id:9, title:"การเก็บรักษาและขนส่ง", items:[
+    "เก็บผลผลิตในที่สะอาด แห้ง และอากาศถ่ายเทหรือไม่",
+    "มีการทำข้อมูลชี้บ่ง เช่น ชื่อผู้ผลิต/แปลง/วันเก็บเกี่ยว ในฟาร์มหรือไม่",
+    "มีกระบวนการขนส่งโดยไม่ทำให้ผลผลิตปนเปื้อนหรือเสียหายหรือไม่",
+  ]},
+  { id:10, title:"ผู้ปฏิบัติงาน", items:[
+    "ผู้ปฏิบัติงานผ่านการอบรมสุขลักษณะส่วนบุคคลหรือไม่",
+    "ผู้ปฏิบัติงานมีความเข้าใจขั้นตอนการเลี้ยงและการเก็บเกี่ยวหรือไม่",
+    "มีหลักฐานการอบรมหรือสอนงานหรือไม่",
+  ]},
+  { id:11, title:"การบันทึกข้อมูลและเอกสาร", items:[
+    "มีบันทึกข้อมูลการใช้ปุ๋ย/สารเคมีหรือไม่",
+    "มีบันทึกความผิดปกติและการแก้ไขหรือไม่",
+    "มีบันทึกการซื้อพันธุ์หรือไม่",
+    "มีบันทึกข้อมูลการเก็บเกี่ยวและขนส่งหรือไม่",
+    "เอกสารทุกอย่างเก็บรักษาอย่างน้อย 3 ปี หรือไม่",
+  ]},
+];
 
-  function curUrl(withFlagVal=null){
-    const u = new URL(location.href);
-    if (withFlagVal == null) u.searchParams.delete(LOGIN_FLAG);
-    else u.searchParams.set(LOGIN_FLAG, withFlagVal);
-    return u.toString();
-  }
-  function clearLoginFlagIfPresent(){
-    const u = new URL(location.href);
-    if (u.searchParams.get(LOGIN_FLAG)) {
-      u.searchParams.delete(LOGIN_FLAG);
-      history.replaceState({}, "", u.toString());
-      sessionStorage.removeItem(RELOGIN_ONCE_KEY);
-    }
-  }
-  function alreadyReloggedOnce(){
-    const t = Number(sessionStorage.getItem(RELOGIN_ONCE_KEY) || "0");
-    return t && (Date.now() - t < 120000);
-  }
-  function markRelogin(){ sessionStorage.setItem(RELOGIN_ONCE_KEY, String(Date.now())); }
+// เรนเดอร์ UI
+function renderSections(){
+  const host = $("#sections");
+  host.innerHTML = "";
+  SECTIONS.forEach(sec=>{
+    const secEl = document.createElement("div");
+    secEl.className = "sec";
+    secEl.innerHTML = `
+      <div class="sec-hdr" data-sec="${sec.id}">
+        <div><b>${sec.id}. ${sec.title}</b></div>
+        <div class="acc">▶</div>
+      </div>
+      <div class="sec-body" id="sec-${sec.id}"></div>
+    `;
+    host.appendChild(secEl);
 
-  async function relogin({forceLogout=false, reason="unknown"} = {}){
-    if (alreadyReloggedOnce()) {
-      alert("รับรองตัวตนไม่สำเร็จ (กันลูป). โปรดปิดแท็บแล้วเปิดใหม่อีกครั้ง");
-      throw new Error("Relogin blocked: already attempted. reason="+reason);
-    }
-    if (forceLogout) try { liff.logout(); } catch {}
-    markRelogin();
-    const redirectUri = curUrl("1");
-    liff.login({ scope: REQUIRED_SCOPE, redirectUri });
+    const body = secEl.querySelector(".sec-body");
+    sec.items.forEach((text, idx)=>{
+      const qId = `${sec.id}_${idx+1}`;
+      const q = document.createElement("div");
+      q.className = "q";
+      q.innerHTML = `
+        <div class="q-title">${sec.id}.${idx+1} ${text}</div>
+        <div class="q-grid">
+          <div class="row">
+            <label class="inline"><input type="radio" name="pass_${qId}" value="PASS" required> ผ่าน</label>
+            <label class="inline"><input type="radio" name="pass_${qId}" value="FAIL"> ไม่ผ่าน</label>
+          </div>
+          <label>หมายเหตุ/หลักฐานประกอบ (ข้อความ)
+            <textarea name="note_${qId}" placeholder="เช่น อธิบายมาตรการ, หมายเลขล็อต, ผู้รับผิดชอบ"></textarea>
+          </label>
+          <label>แนบรูป (ได้หลายรูป)
+            <input type="file" name="photos_${qId}" accept="image/*" multiple>
+          </label>
+          <div class="preview" data-preview-for="${qId}"></div>
+        </div>
+      `;
+      body.appendChild(q);
+
+      // preview
+      q.querySelector(`input[name="photos_${qId}"]`).addEventListener("change", (e)=>{
+        const pv = body.querySelector(`.preview[data-preview-for="${qId}"]`);
+        pv.innerHTML = "";
+        [...e.target.files].forEach(f=>{
+          const im = document.createElement("img");
+          im.src = URL.createObjectURL(f);
+          pv.appendChild(im);
+        });
+        updateScore();
+      });
+      // เมื่อเลือก pass/fail อัปเดตคะแนน
+      q.querySelectorAll(`input[name="pass_${qId}"]`).forEach(r=>{
+        r.addEventListener("change", updateScore);
+      });
+    });
+  });
+
+  // toggle accordion
+  host.querySelectorAll(".sec-hdr").forEach(h=>{
+    h.addEventListener("click", ()=>{
+      const body = h.nextElementSibling;
+      const icon = h.querySelector(".acc");
+      const opened = body.style.display === "block";
+      body.style.display = opened ? "none" : "block";
+      icon.classList.toggle("open", !opened);
+    });
+  });
+}
+
+function countTotals(){
+  let total=0, pass=0, fail=0;
+  SECTIONS.forEach(sec=>{
+    sec.items.forEach((_, idx)=>{
+      total++;
+      const qId = `${sec.id}_${idx+1}`;
+      const val = (document.querySelector(`input[name="pass_${qId}"]:checked`)||{}).value;
+      if (val==="PASS") pass++;
+      else if (val==="FAIL") fail++;
+    });
+  });
+  return {total, pass, fail};
+}
+function updateScore(){
+  const {total, pass} = countTotals();
+  $("#score").textContent = `ผ่าน ${pass} / ${total}`;
+}
+
+// ===== LIFF + Auth + Upload =====
+async function getFreshIdToken(){
+  if (!liff.isLoggedIn()) {
+    liff.login({ scope: REQUIRED_SCOPE, redirectUri: location.href });
     return new Promise(()=>{});
   }
-
-  async function getFreshIdTokenOrRelogin() {
-    if (!liff.isLoggedIn()) return relogin({ reason: "not-logged-in" });
-    let idToken = liff.getIDToken();
-    let decoded = null;
-    try { decoded = liff.getDecodedIDToken?.(); } catch {}
-    if (!idToken || !decoded) return relogin({ forceLogout:true, reason:"no-token" });
-    const expMs = (decoded.exp ? decoded.exp*1000 : 0);
-    if (Date.now() > expMs - 15000) return relogin({ forceLogout:true, reason:"expired-or-near" });
-    return { idToken, decoded };
+  const idToken = liff.getIDToken();
+  const decoded = liff.getDecodedIDToken?.();
+  if (!idToken || !decoded) {
+    liff.logout(); liff.login({ scope: REQUIRED_SCOPE, redirectUri: location.href }); return new Promise(()=>{});
   }
+  const exp = (decoded.exp||0)*1000;
+  if (Date.now() > exp - 15000) {
+    liff.logout(); liff.login({ scope: REQUIRED_SCOPE, redirectUri: location.href }); return new Promise(()=>{});
+  }
+  return idToken;
+}
 
-  async function exchangeToFirebaseToken(idToken){
-    const r = await fetch(AUTH_URL, {
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ idToken })
+async function exchangeToFirebaseToken(idToken){
+  const r = await fetch(AUTH_URL, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ idToken }) });
+  if (!r.ok) throw new Error("authLine failed");
+  const js = await r.json(); return js.firebaseToken;
+}
+
+function collectAuditData(){
+  const farmId = $("#farmId").value.trim();
+  const plotId = $("#plotId").value.trim();
+  const geo = { lat: $("#lat").value ? Number($("#lat").value) : null, lng: $("#lng").value ? Number($("#lng").value) : null };
+  const answers = [];
+  SECTIONS.forEach(sec=>{
+    sec.items.forEach((text, idx)=>{
+      const qId = `${sec.id}_${idx+1}`;
+      const val = (document.querySelector(`input[name="pass_${qId}"]:checked`)||{}).value || null;
+      const note = (document.querySelector(`textarea[name="note_${qId}"]`)||{}).value || null;
+      const files = (document.querySelector(`input[name="photos_${qId}"]`)||{}).files || [];
+      answers.push({
+        sectionId: sec.id, sectionTitle: sec.title, itemNo: `${sec.id}.${idx+1}`,
+        text, result: val, note, photos: Array.from(files).map(f=>({file:f}))
+      });
     });
-    const txt = await r.text();
-    let js = {}; try { js = JSON.parse(txt); } catch {}
-    console.log("authLine response:", r.status, js || txt);
-    if (!r.ok) {
-      const msg = (js?.error || txt || "");
-      if ((js?.where === "authLine/verify") && msg.toLowerCase().includes("expired")) {
-        return relogin({ forceLogout:true, reason:"backend-says-expired" });
-      }
-      throw new Error("authLine failed: " + msg);
+  });
+  return { farmId, plotId, geo, answers };
+}
+
+async function uploadAllPhotosAndAuditJson(uploadPrefix, answers){
+  const storage = firebase.storage().ref();
+  // อัปโหลดรูป + เก็บ path ใส่ answers
+  for (const a of answers){
+    a.photoPaths = [];
+    for (const it of a.photos){
+      const blob = await resizeImage(it.file);
+      const safe = it.file.name.replace(/\s+/g,'_').replace(/[^a-zA-Z0-9._-]/g,'');
+      const folder = `audit/${a.sectionId}-${a.itemNo.replace('.','_')}/original`;
+      const path = `${uploadPrefix}/${folder}/${Date.now()}-${safe}`;
+      await storage.child(path).put(blob, { contentType:"image/jpeg" });
+      a.photoPaths.push(path);
     }
-    return js.firebaseToken;
+    delete a.photos; // ไม่ส่งไฟล์จริงใน audit.json
   }
+  // เขียน audit.json ลง Storage
+  const auditDoc = {
+    standard: "GAqP (Wolffia)",
+    generatedAt: new Date().toISOString(),
+    answers: answers
+  };
+  const auditBlob = new Blob([JSON.stringify(auditDoc, null, 2)], { type:"application/json" });
+  await storage.child(`${uploadPrefix}/audit/audit.json`).put(auditBlob, { contentType:"application/json" });
+}
 
-  // ย่อรูปก่อนอัปโหลด
-  const resizeImage = (file, maxSize=1600, q=0.85)=>new Promise((resolve)=>{
-    const img = new Image();
-    img.onload = ()=>{
-      const scale = Math.min(1, maxSize/Math.max(img.width, img.height));
-      const w = Math.round(img.width*scale), h = Math.round(img.height*scale);
-      const c = document.createElement('canvas'); c.width=w; c.height=h;
-      c.getContext('2d').drawImage(img,0,0,w,h);
-      c.toBlob(b=>resolve(b),'image/jpeg',q);
+function summarizeForDescription(answers){
+  const { total, pass, fail } = countTotals();
+  return `GAqP self-audit: ผ่าน ${pass}/${total}, ไม่ผ่าน ${fail}/${total}`;
+}
+
+window.addEventListener('DOMContentLoaded', async () => {
+  renderSections(); updateScore();
+
+  $("#btnGeo").onclick = ()=>navigator.geolocation.getCurrentPosition(
+    p=>{ $("#lat").value=p.coords.latitude.toFixed(6); $("#lng").value=p.coords.longitude.toFixed(6); },
+    ()=>alert("ดึงพิกัดไม่สำเร็จ")
+  );
+
+  try {
+    await liff.init({ liffId: LIFF_ID });
+    const idToken = await getFreshIdToken();
+
+    // โปรไฟล์
+    const prof = await liff.getProfile();
+    $("#uimg").src = prof.pictureUrl || "";
+    $("#uname").textContent = prof.displayName || "LINE User";
+    $("#uid").textContent = `uid: ${prof.userId}`;
+    $("#logout").onclick = ()=>{ liff.logout(); location.reload(); };
+
+    // แลก Firebase custom token + sign in
+    const firebaseToken = await exchangeToFirebaseToken(idToken);
+    if (!firebase.apps?.length) firebase.initializeApp(FIREBASE_CONFIG);
+    await firebase.auth().signInWithCustomToken(firebaseToken);
+
+    // ส่งแบบประเมิน
+    $("#submitBtn").onclick = async ()=>{
+      try{
+        if (!$("#consent").checked) return alert("กรุณายินยอมก่อนส่ง");
+        const { farmId, plotId, geo, answers } = collectAuditData();
+        if (!farmId || !plotId) return alert("กรุณากรอกฟาร์ม/แปลงให้ครบ");
+
+        // เตรียม payload ให้เข้ากับ /createIssue เดิม (จะเก็บ audit.json + รูปใน Storage)
+        const desc = summarizeForDescription(answers);
+        const payload = {
+          farmId, plotId,
+          crop: null, batch: null,
+          category: "GAQP",           // ใช้แท็กเฉย ๆ
+          severity: 1,                // ไม่ใช้สำหรับ audit
+          description: desc,          // สรุปสั้นใน Firestore
+          actionPlan: null, productUsed: null, dose: null, phiDays: null,
+          geo: (geo.lat && geo.lng) ? geo : null,
+          consent: true
+        };
+
+        // ขอ id_token สด ๆ อีกรอบ กันหมดอายุ
+        const freshId = await getFreshIdToken();
+
+        // 1) สร้างเอกสาร/รับ uploadPrefix จาก backend เดิม
+        const r = await fetch(CREATE_URL, {
+          method:"POST",
+          headers: { "Content-Type":"application/json", "Authorization":"Bearer "+freshId },
+          body: JSON.stringify(payload)
+        });
+        const js = await r.json().catch(()=> ({}));
+        if (!r.ok) throw new Error(js?.error || "สร้างรายการไม่สำเร็จ");
+        const { issueId, uploadPrefix } = js;
+
+        // 2) อัปโหลดรูปทั้งหมด + เขียน audit.json ลง Storage
+        await uploadAllPhotosAndAuditJson(uploadPrefix, answers);
+
+        alert(`ส่งแบบประเมินเรียบร้อย\nรหัสอ้างอิง: ${issueId}`);
+        if (liff.isInClient()) liff.closeWindow();
+      }catch(e){
+        console.error(e);
+        alert(e.message || "ส่งแบบประเมินไม่สำเร็จ");
+      }
     };
-    img.src = URL.createObjectURL(file);
-  });
 
-  // ===== MAIN =====
-  window.addEventListener('DOMContentLoaded', async () => {
-    try {
-      // ✅ ตรงนี้ "หลัง" firebase compat ถูกโหลดแล้ว จึงมีตัวแปร global firebase ให้ใช้
-      if (!firebase?.apps?.length) firebase.initializeApp(FIREBASE_CONFIG);
-
-      await liff.init({ liffId: LIFF_ID });
-      clearLoginFlagIfPresent();
-
-      const { idToken, decoded } = await getFreshIdTokenOrRelogin();
-      console.log("Decoded ID token:", decoded);
-
-      const prof = await liff.getProfile();
-      $("#uimg").src = prof.pictureUrl || "";
-      $("#uname").textContent = prof.displayName || "LINE User";
-      $("#uid").textContent = `uid: ${prof.userId}`;
-      $("#logout").onclick = ()=> { liff.logout(); location.reload(); };
-
-      const firebaseToken = await exchangeToFirebaseToken(idToken);
-      await firebase.auth().signInWithCustomToken(firebaseToken);
-
-      $("#btnGeo").onclick = ()=>navigator.geolocation.getCurrentPosition(
-        p=>{ $("#lat").value=p.coords.latitude.toFixed(6); $("#lng").value=p.coords.longitude.toFixed(6); },
-        ()=>alert("ดึงพิกัดไม่สำเร็จ")
-      );
-      $("#photos").addEventListener('change', e=>{
-        const files=e.target.files; const pv=$("#pv"); pv.innerHTML="";
-        [...files].forEach(f=>{ const im=document.createElement('img'); im.src=URL.createObjectURL(f); pv.appendChild(im); });
-      });
-
-      $("#f").addEventListener('submit', async (e)=>{
-        e.preventDefault();
-        try {
-          if (!$("#consent").checked) return alert("กรุณายินยอมก่อนส่ง");
-
-          const fresh = await getFreshIdTokenOrRelogin();
-          const freshIdToken = fresh.idToken;
-
-          const fd = new FormData(e.target);
-          const n = (v)=> (v === "" || v === null) ? null : Number(v);
-          const payload = {
-            farmId: fd.get("farmId"),
-            plotId: fd.get("plotId"),
-            crop: fd.get("crop") || null,
-            batch: fd.get("batch") || null,
-            category: fd.get("category"),
-            severity: Number(fd.get("severity") || 1),
-            description: fd.get("description"),
-            actionPlan: fd.get("actionPlan") || null,
-            productUsed: fd.get("productUsed") || null,
-            dose: fd.get("dose") || null,
-            phiDays: n(fd.get("phiDays")),
-            geo: (()=> {
-              const lat = parseFloat(fd.get("lat")); const lng = parseFloat(fd.get("lng"));
-              return (Number.isFinite(lat) && Number.isFinite(lng)) ? { lat, lng } : null;
-            })(),
-            consent: true
-          };
-
-          const r = await fetch(CREATE_URL, {
-            method:"POST",
-            headers: {
-              "Content-Type":"application/json",
-              "Authorization":"Bearer "+freshIdToken
-            },
-            body: JSON.stringify(payload)
-          });
-          const txt = await r.text(); let js = {}; try{ js = JSON.parse(txt); }catch{}
-          console.log("createIssue response:", r.status, js || txt);
-          if (!r.ok) {
-            const msg = (js?.error || txt || "");
-            if ((js?.where === "createIssue/verify") && msg.toLowerCase().includes("expired")) {
-              return relogin({ forceLogout:true, reason:"createIssue-expired" });
-            }
-            throw new Error("createIssue failed: " + msg);
-          }
-          const { issueId, uploadPrefix } = js;
-
-          const files = $("#photos").files;
-          if (files.length){
-            const storage = firebase.storage().ref();
-            for (const f of files){
-              const blob = await resizeImage(f);
-              const safe = f.name.replace(/\s+/g,'_').replace(/[^a-zA-Z0-9._-]/g, '');
-              const path = `${uploadPrefix}/original/${Date.now()}-${safe}`;
-              await storage.child(path).put(blob, { contentType:"image/jpeg" });
-            }
-          }
-
-          alert(`ส่งเรียบร้อย (เลขอ้างอิง: ${issueId})`);
-          if (liff.isInClient()) liff.closeWindow();
-        } catch (err) {
-          console.error(err);
-          alert(err.message || "ส่งไม่สำเร็จ");
-        }
-      });
-    } catch (err) {
-      console.error(err);
-      alert(err.message || "เริ่มต้นระบบไม่สำเร็จ");
-    }
-  });
+  } catch (err) {
+    console.error(err);
+    alert(err.message || "เริ่มต้นระบบไม่สำเร็จ");
+  }
+});
 </script>
 </body>
 </html>
