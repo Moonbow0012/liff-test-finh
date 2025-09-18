@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>แบบสอบถามปัญหาฟาร์ม</title>
   <link rel="stylesheet" href="./styles.css"/>
+  <!-- SDKs โหลดแบบ defer -->
   <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.13.1/firebase-auth-compat.js"></script>
@@ -12,7 +13,6 @@
 </head>
 <body>
   <header class="hdr">
-    <!-- ซ่อนโลโก้ถ้าไฟล์ไม่มี -->
     <img src="./finh_logo.png" alt="logo" class="logo" onerror="this.style.display='none'"/>
     <h1>แจ้งปัญหาฟาร์ม</h1>
   </header>
@@ -85,25 +85,16 @@
 <script>
   // ===== CONFIG =====
   const LIFF_ID    = "2008118596-nMd5qQ38"; // <- LIFF ID ของคุณ
-  const AUTH_URL   = "https://authline-iyipepekja-as.a.run.app";    // จาก `firebase functions:list`
-  const CREATE_URL = "https://createissue-iyipepekja-as.a.run.app"; // จาก `firebase functions:list`
+  const AUTH_URL   = "https://authline-iyipepekja-as.a.run.app";    // functions URL จริง
+  const CREATE_URL = "https://createissue-iyipepekja-as.a.run.app"; // functions URL จริง
   const FIREBASE_CONFIG = {
     apiKey: "AIzaSyCnNQdOzThqmT3Wgvir2x4yrpiygKQKbV8",
     authDomain: "finh-iot-ai.firebaseapp.com",
     projectId: "finh-iot-ai",
-    storageBucket: "finh-iot-ai.firebasestorage.app"
+    storageBucket: "finh-iot-ai.appspot.com"   // ✅ ต้องเป็น .appspot.com
   };
 
-    if (!firebase.apps?.length) {
-    firebase.initializeApp(FIREBASE_CONFIG);
-  } else {
-    firebase.app();
-  }
-
-  const app = initializeApp(firebaseConfig);
   const REQUIRED_SCOPE = ['openid','profile','email'];
-
-  // ===== Helpers =====
   const $ = (s)=>document.querySelector(s);
   const LOGIN_FLAG = "fromLogin";
   const RELOGIN_ONCE_KEY = "liff.relogin.once.v2";
@@ -124,12 +115,9 @@
   }
   function alreadyReloggedOnce(){
     const t = Number(sessionStorage.getItem(RELOGIN_ONCE_KEY) || "0");
-    // ป้องกันลูป: อนุญาตให้รีได้ 1 ครั้งต่อการโหลดหน้า (หรือถ้าเกิน 2 นาทีถือว่าเริ่มใหม่)
     return t && (Date.now() - t < 120000);
   }
-  function markRelogin(){
-    sessionStorage.setItem(RELOGIN_ONCE_KEY, String(Date.now()));
-  }
+  function markRelogin(){ sessionStorage.setItem(RELOGIN_ONCE_KEY, String(Date.now())); }
 
   async function relogin({forceLogout=false, reason="unknown"} = {}){
     if (alreadyReloggedOnce()) {
@@ -140,25 +128,17 @@
     markRelogin();
     const redirectUri = curUrl("1");
     liff.login({ scope: REQUIRED_SCOPE, redirectUri });
-    return new Promise(()=>{}); // จะ redirect ออกไป
+    return new Promise(()=>{});
   }
 
-  // เอา id_token สด ๆ ถ้าไม่มี/หมดอายุ -> re-login (1 ครั้ง)
   async function getFreshIdTokenOrRelogin() {
     if (!liff.isLoggedIn()) return relogin({ reason: "not-logged-in" });
-
     let idToken = liff.getIDToken();
     let decoded = null;
     try { decoded = liff.getDecodedIDToken?.(); } catch {}
-
-    // ถ้าไม่มี token/ถอดไม่ได้ -> re-login
     if (!idToken || !decoded) return relogin({ forceLogout:true, reason:"no-token" });
-
-    // เช็คหมดอายุ: เผื่อ margin 15 วินาที
     const expMs = (decoded.exp ? decoded.exp*1000 : 0);
-    if (Date.now() > expMs - 15000) {
-      return relogin({ forceLogout:true, reason:"expired-or-near" });
-    }
+    if (Date.now() > expMs - 15000) return relogin({ forceLogout:true, reason:"expired-or-near" });
     return { idToken, decoded };
   }
 
@@ -171,10 +151,8 @@
     const txt = await r.text();
     let js = {}; try { js = JSON.parse(txt); } catch {}
     console.log("authLine response:", r.status, js || txt);
-
     if (!r.ok) {
       const msg = (js?.error || txt || "");
-      // ถ้า backend บอก expired -> บังคับรีล็อกอิน 1 ครั้ง
       if ((js?.where === "authLine/verify") && msg.toLowerCase().includes("expired")) {
         return relogin({ forceLogout:true, reason:"backend-says-expired" });
       }
@@ -183,7 +161,7 @@
     return js.firebaseToken;
   }
 
-  // ===== Image utils =====
+  // ย่อรูปก่อนอัปโหลด
   const resizeImage = (file, maxSize=1600, q=0.85)=>new Promise((resolve)=>{
     const img = new Image();
     img.onload = ()=>{
@@ -199,28 +177,24 @@
   // ===== MAIN =====
   window.addEventListener('DOMContentLoaded', async () => {
     try {
-      await liff.init({ liffId: LIFF_ID });
+      // ✅ ตรงนี้ "หลัง" firebase compat ถูกโหลดแล้ว จึงมีตัวแปร global firebase ให้ใช้
+      if (!firebase?.apps?.length) firebase.initializeApp(FIREBASE_CONFIG);
 
-      // ล้าง flag เมื่อตีกลับจาก LINE แล้ว
+      await liff.init({ liffId: LIFF_ID });
       clearLoginFlagIfPresent();
 
-      // 1) ขอ id_token สด (รี-ล็อกอิน 1 ครั้งถ้าจำเป็น)
       const { idToken, decoded } = await getFreshIdTokenOrRelogin();
       console.log("Decoded ID token:", decoded);
 
-      // 2) แสดงโปรไฟล์
       const prof = await liff.getProfile();
       $("#uimg").src = prof.pictureUrl || "";
       $("#uname").textContent = prof.displayName || "LINE User";
       $("#uid").textContent = `uid: ${prof.userId}`;
       $("#logout").onclick = ()=> { liff.logout(); location.reload(); };
 
-      // 3) แลกเป็น Firebase Custom Token
       const firebaseToken = await exchangeToFirebaseToken(idToken);
-      firebase.initializeApp(FIREBASE_CONFIG);
       await firebase.auth().signInWithCustomToken(firebaseToken);
 
-      // 4) UI extras
       $("#btnGeo").onclick = ()=>navigator.geolocation.getCurrentPosition(
         p=>{ $("#lat").value=p.coords.latitude.toFixed(6); $("#lng").value=p.coords.longitude.toFixed(6); },
         ()=>alert("ดึงพิกัดไม่สำเร็จ")
@@ -230,13 +204,11 @@
         [...files].forEach(f=>{ const im=document.createElement('img'); im.src=URL.createObjectURL(f); pv.appendChild(im); });
       });
 
-      // 5) ส่งฟอร์ม
       $("#f").addEventListener('submit', async (e)=>{
         e.preventDefault();
         try {
           if (!$("#consent").checked) return alert("กรุณายินยอมก่อนส่ง");
 
-          // ขอ id_token สดอีกรอบก่อนยิง backend (กันหมดอายุระหว่างหน้าเปิด)
           const fresh = await getFreshIdTokenOrRelogin();
           const freshIdToken = fresh.idToken;
 
@@ -261,7 +233,6 @@
             consent: true
           };
 
-          // 5.1) createIssue
           const r = await fetch(CREATE_URL, {
             method:"POST",
             headers: {
@@ -281,7 +252,6 @@
           }
           const { issueId, uploadPrefix } = js;
 
-          // 5.2) upload photos
           const files = $("#photos").files;
           if (files.length){
             const storage = firebase.storage().ref();
