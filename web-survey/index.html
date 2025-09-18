@@ -88,11 +88,19 @@
   const AUTH_URL   = "https://authline-iyipepekja-as.a.run.app";    // จาก `firebase functions:list`
   const CREATE_URL = "https://createissue-iyipepekja-as.a.run.app"; // จาก `firebase functions:list`
   const FIREBASE_CONFIG = {
-    apiKey: "xxx",
-    authDomain: "xxx.firebaseapp.com",
-    projectId: "xxx",
-    storageBucket: "xxx.appspot.com"
+    apiKey: "AIzaSyCnNQdOzThqmT3Wgvir2x4yrpiygKQKbV8",
+    authDomain: "finh-iot-ai.firebaseapp.com",
+    projectId: "finh-iot-ai",
+    storageBucket: "finh-iot-ai.firebasestorage.app"
   };
+
+    if (!firebase.apps?.length) {
+    firebase.initializeApp(FIREBASE_CONFIG);
+  } else {
+    firebase.app();
+  }
+
+  const app = initializeApp(firebaseConfig);
   const REQUIRED_SCOPE = ['openid','profile','email'];
 
   // ===== Helpers =====

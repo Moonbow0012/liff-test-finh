@@ -5,66 +5,27 @@ const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 
 // ====== CONFIG ======
-const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT || "finh-iot-ai";
-const LINE_CHANNEL_ID = defineSecret("LINE_CHANNEL_ID"); // 2008118596
-const SA_KEY_JSON = defineSecret("SA_KEY_JSON");         // วางเนื้อไฟล์ key JSON ทั้งก้อน
+const PROJECT_ID =
+  process.env.GOOGLE_CLOUD_PROJECT ||
+  process.env.GCLOUD_PROJECT ||
+  "finh-iot-ai";
 
-// Functions tuning
+const LINE_CHANNEL_ID = defineSecret("LINE_CHANNEL_ID"); // เช่น 2008118596
+
+// Cloud Functions (v2) runtime options: รันด้วย App Engine default SA
 setGlobalOptions({
   region: "asia-southeast1",
   memory: "512MiB",
   timeoutSeconds: 60,
+  serviceAccount: `${PROJECT_ID}@appspot.gserviceaccount.com`,
 });
 
-// ====== Default app สำหรับ Firestore/Storage/Triggers (ADC ปกติ) ======
-try { admin.app(); } catch { admin.initializeApp(); }
-
-// ====== แอปพิเศษสำหรับ Auth (ใช้ key JSON; ไม่พึ่ง signBlob) ======
-let authApp = null;
-
-function sanitizeSaJsonRaw(raw) {
-  let s = String(raw ?? "");
-  // ตัด BOM
-  s = s.replace(/^\uFEFF/, "").trim();
-
-  // ถ้าเผลอใส่เป็น ```json ... ```
-  s = s.replace(/^```(?:json)?\s*/i, "").replace(/```$/i, "").trim();
-
-  // ถ้าเผลอครอบด้วย "…"
-  if (s.startsWith('"') && s.endsWith('"')) {
-    try { s = JSON.parse(s); } catch (_) {}
-  }
-  return s;
-}
-
-function parseSaKeyOrThrow(raw) {
-  const s = sanitizeSaJsonRaw(raw);
-  if (!s || !s.trim().startsWith("{")) {
-    throw new Error("SA_KEY_JSON is missing or not raw JSON (must start with '{').");
-  }
-  let obj;
-  try { obj = JSON.parse(s); }
-  catch (e) { throw new Error("SA_KEY_JSON parse error: " + e.message); }
-
-  if (!obj.client_email || !obj.private_key || !obj.project_id) {
-    throw new Error("SA_KEY_JSON missing required fields (client_email/private_key/project_id).");
-  }
-  // ตรวจรูปแบบ private_key (ควรมี \n ไม่ใช่บรรทัดจริง)
-  const pk = String(obj.private_key);
-  const hasEscapedNL = pk.includes("\\n");
-  const hasRealNL = /\n/.test(pk);
-  if (!hasEscapedNL && hasRealNL) {
-    // มีบรรทัดจริงแต่ไม่มี \n → ส่วนใหญ่เกิดจากพังตอน paste
-    throw new Error("SA_KEY_JSON.private_key appears to contain real newlines; it must contain \\n escapes.");
-  }
-  return obj;
-}
-
-function ensureAuthApp() {
-  if (authApp) return authApp;
-  const keyObj = parseSaKeyOrThrow(SA_KEY_JSON.value());      // <= ฟ้อง error ชัด
-  authApp = admin.initializeApp({ credential: admin.credential.cert(keyObj) }, "authapp");
-  return authApp;
+// Admin SDK ใช้ ADC + เซ็นผ่าน IAM (signBlob) ในนาม serviceAccountId นี้
+try { admin.app(); } catch {
+  admin.initializeApp({
+    credential: admin.credential.applicationDefault(),
+    serviceAccountId: `${PROJECT_ID}@appspot.gserviceaccount.com`,
+  });
 }
 
 // ---- utils: verify with LINE + peek aud from JWT (debug) ----
@@ -86,10 +47,7 @@ async function verifyWithLine(idToken, channelIdRaw) {
   });
   const body = await r.json().catch(() => ({}));
   const ok = r.ok && body?.sub && (body?.aud === channelId || body?.client_id === channelId);
-  if (!ok) {
-    const msg = `LINE verify failed (${r.status}) cid=${channelId} : ${JSON.stringify(body)}`;
-    throw new Error(msg);
-  }
+  if (!ok) throw new Error(`LINE verify failed (${r.status}) cid=${channelId} : ${JSON.stringify(body)}`);
   return body; // { sub, aud, name?, picture?, exp, ... }
 }
 
@@ -129,7 +87,7 @@ function applyCors(req, res) {
 /* ================= */
 
 // ---------- /authLine ----------
-exports.authLine = onRequest({ secrets: [LINE_CHANNEL_ID, SA_KEY_JSON] }, async (req, res) => {
+exports.authLine = onRequest({ secrets: [LINE_CHANNEL_ID] }, async (req, res) => {
   if (applyCors(req, res)) return;
   if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
 
@@ -154,22 +112,13 @@ exports.authLine = onRequest({ secrets: [LINE_CHANNEL_ID, SA_KEY_JSON] }, async 
 
     const uid = `line_${profile.sub}`;
 
-    // ใช้ authApp (cert) สำหรับ Auth ทั้งหมด (ไม่พึ่ง signBlob)
-    let auth;
+    // STEP 2: ensure user (ใช้ admin.auth() ของ default app)
     try {
-      auth = ensureAuthApp().auth();
-    } catch (e) {
-      console.error("authLine.ensureAuthApp", e?.message || e);
-      return res.status(500).json({ ok:false, where:"authLine/ensureAuthApp", error:String(e?.message || e) });
-    }
-
-    // STEP 2: ensure user
-    try {
-      await auth.getUser(uid);
+      await admin.auth().getUser(uid);
     } catch (e) {
       if (e && e.code === "auth/user-not-found") {
         try {
-          await auth.createUser({ uid, displayName: profile.name || "LINE User" });
+          await admin.auth().createUser({ uid, displayName: profile.name || "LINE User" });
         } catch (e2) {
           console.error("authLine.createUser", e2?.message || e2);
           return res.status(500).json({ ok:false, where:"authLine/createUser", error:String(e2?.message || e2) });
@@ -180,9 +129,9 @@ exports.authLine = onRequest({ secrets: [LINE_CHANNEL_ID, SA_KEY_JSON] }, async 
       }
     }
 
-    // STEP 3: issue custom token (ลงลายเซ็นในเครื่อง)
+    // STEP 3: issue custom token (เบื้องหลังจะเรียก IAM signBlob ให้เอง)
     try {
-      const firebaseToken = await auth.createCustomToken(uid, { lineSub: profile.sub });
+      const firebaseToken = await admin.auth().createCustomToken(uid, { lineSub: profile.sub });
       return res.json({ ok:true, firebaseToken, displayName: profile.name || null });
     } catch (e) {
       console.error("authLine.customToken", e?.message || e);
@@ -227,7 +176,7 @@ exports.createIssue = onRequest({ secrets: [LINE_CHANNEL_ID] }, async (req, res)
       return res.status(400).json({ ok:false, where:"createIssue/validate", error:String(e?.message || e) });
     }
 
-    // STEP 3: write (ใช้ default app)
+    // STEP 3: write
     try {
       const db = admin.firestore();
       const doc = {
@@ -281,45 +230,17 @@ exports.ping = onRequest((req, res) => {
   res.json({ ok:true, codebase:"issues", at:new Date().toISOString() });
 });
 
-// ---------- /diagSaKey (ตรวจ secret แบบไม่เปิดเผยคีย์) ----------
-exports.diagSaKey = onRequest({ secrets: [SA_KEY_JSON] }, async (req, res) => {
+// ---------- /diagWhoami ----------
+exports.diagWhoami = onRequest(async (req, res) => {
   try {
-    const raw0 = SA_KEY_JSON.value() || "";
-    // ไม่เปิดเผยเนื้อหา: ตรวจแค่รูปแบบอักขระต้นน้ำ
-    const first16 = Array.from(raw0.slice(0, 16)).map(c => c.charCodeAt(0));
-    // sanitize แบบเดียวกับตอนใช้งานจริง
-    const sanitize = (s) => {
-      s = s.replace(/^\uFEFF/, "").trim();            // ตัด BOM
-      s = s.replace(/^```(?:json)?\s*/i, "")
-           .replace(/```$/i, "").trim();              // ตัด ``` ```
-      if (s.startsWith('"') && s.endsWith('"')) {
-        try { s = JSON.parse(s); } catch {}
-      }
-      return s;
-    };
-    const s = sanitize(raw0);
-    let parsed = null, parseError = null, info = {};
-    try {
-      parsed = JSON.parse(s);
-      info = {
-        has_client_email: !!parsed.client_email,
-        has_project_id: !!parsed.project_id,
-        private_key_len: parsed.private_key ? String(parsed.private_key).length : 0,
-        private_key_has_escaped_n: parsed.private_key ? String(parsed.private_key).includes("\\n") : false,
-        private_key_has_real_newline: parsed.private_key ? /\n/.test(String(parsed.private_key)) : false,
-      };
-    } catch (e) {
-      parseError = e.message;
-    }
-    res.json({
-      ok: !!parsed,
-      startsWithLeftBrace: s.trim().startsWith("{"),
-      rawFirst16CharCodes: first16,
-      parseError,
-      info
-    });
-  } catch (e) {
-    res.status(500).json({ ok:false, error: String(e?.message || e) });
+    const fetch = (...a) => import("node-fetch").then(({ default: f }) => f(...a));
+    const r = await fetch(
+      "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email",
+      { headers: { "Metadata-Flavor": "Google" } }
+    );
+    const email = await r.text();
+    res.json({ projectId: PROJECT_ID, runtimeServiceAccount: email || null });
+  } catch {
+    res.json({ projectId: PROJECT_ID, runtimeServiceAccount: null });
   }
 });
-
