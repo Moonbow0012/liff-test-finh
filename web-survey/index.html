@@ -10,7 +10,6 @@
   <script defer src="https://www.gstatic.com/firebasejs/10.13.1/firebase-auth-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.13.1/firebase-storage-compat.js"></script>
   <style>
-    /* เสริมสไตล์ให้ฟอร์มอ่านง่าย */
     body { font-family: system-ui, sans-serif; background:#f7faf9; color:#0f172a; }
     .hdr { display:flex; gap:12px; align-items:center; padding:12px 16px; background:#fff; border-bottom:1px solid #e5e7eb; position:sticky; top:0; z-index:10; }
     .logo { height:36px; }
@@ -18,10 +17,9 @@
     .card { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:14px; margin:12px 0; box-shadow: 0 1px 0 rgba(16,24,40,.04); }
     .row { display:flex; gap:12px; flex-wrap:wrap; }
     label.inline { display:flex; align-items:center; gap:8px; }
-    input[type="text"], input[type="number"], textarea, select { width:100%; padding:10px; border:1px solid #d1d5db; border-radius:10px; background:#fff; }
+    input[type="text"], textarea, select { width:100%; padding:10px; border:1px solid #d1d5db; border-radius:10px; background:#fff; }
     textarea { min-height:72px; }
     .btn { appearance:none; border:1px solid #0ea5e9; background:#0ea5e9; color:#fff; border-radius:10px; padding:10px 14px; cursor:pointer; }
-    .btn.ghost { background:#fff; color:#0ea5e9; }
     .btn.outline { background:#fff; border-color:#94a3b8; color:#334155; }
     .muted { color:#64748b; font-size:12px; }
     .sec { border:1px solid #e2e8f0; border-radius:12px; margin:10px 0; overflow:hidden; }
@@ -34,10 +32,7 @@
     .preview { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
     .preview img { width:84px; height:84px; object-fit:cover; border-radius:8px; border:1px solid #e5e7eb; }
     .sticky-foot { position:fixed; left:0; right:0; bottom:0; background:#ffffffd9; backdrop-filter: blur(6px);
-      border-top:1px solid #e5e7eb; padding:10px 12px; display:flex; justify-content:center; gap:10px; }
-    .acc { transform: rotate(0deg); transition: .2s; }
-    .acc.open { transform: rotate(90deg); }
-    .pill { background:#eef2ff; color:#3730a3; font-size:12px; padding:4px 8px; border-radius:999px; }
+      border-top:1px solid #e5e7eb; padding:10px 12px; display:flex; justify-content:center; }
   </style>
 </head>
 <body>
@@ -70,11 +65,6 @@
         <label style="flex:1">ฟาร์ม (farmId)<br><input name="farmId" id="farmId" required placeholder="เช่น farm-1"></label>
         <label style="flex:1">แปลง (plotId)<br><input name="plotId" id="plotId" required placeholder="เช่น P01"></label>
       </div>
-      <div class="row" style="margin-top:8px">
-        <label style="flex:1">พิกัดละติจูด (lat)<br><input id="lat" placeholder="16.12345"></label>
-        <label style="flex:1">ลองจิจูด (lng)<br><input id="lng" placeholder="103.12345"></label>
-        <button id="btnGeo" class="btn ghost" type="button" title="ดึงพิกัดจากอุปกรณ์">ดึงพิกัด</button>
-      </div>
     </section>
 
     <!-- แบบประเมิน 11 หมวด -->
@@ -87,7 +77,6 @@
   </div>
 
   <div class="sticky-foot">
-    <span id="score" class="pill">ผ่าน 0 / 0</span>
     <button id="submitBtn" class="btn">ส่งแบบประเมิน</button>
   </div>
 
@@ -95,7 +84,7 @@
 /* ======= ตั้งค่าโปรเจกต์คุณ ======= */
 const LIFF_ID    = "PUT_YOUR_LIFF_ID"; // เช่น "2008xxxxxx-xxxxx"
 const AUTH_URL   = "https://authline-xxxxx-as.a.run.app";     // /authLine
-const CREATE_URL = "https://createissue-xxxxx-as.a.run.app";  // /createIssue (ใช้เก็บ prefix + issueId)
+const CREATE_URL = "https://createissue-xxxxx-as.a.run.app";  // /createIssue
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSy...YOUR...",
   authDomain: "your-project.firebaseapp.com",
@@ -119,7 +108,7 @@ function resizeImage(file, maxSize=1600, q=0.85){return new Promise(r=>{
   img.src = URL.createObjectURL(file);
 });}
 
-// ===== นิยามโครงสร้าง 11 หมวดจากที่คุณให้ =====
+// ===== นิยามโครงสร้าง 11 หมวด (ตามที่คุณให้) =====
 const SECTIONS = [
   { id:1, title:"สถานที่ตั้งฟาร์ม", items:[
     "พื้นที่ตั้งฟาร์มอยู่ใกล้แหล่งมลพิษหรือแหล่งปนเปื้อน เช่น โรงงานอุตสาหกรรม เกษตรกรรมที่ใช้สารเคมี หรือไม่",
@@ -190,7 +179,7 @@ function renderSections(){
     secEl.innerHTML = `
       <div class="sec-hdr" data-sec="${sec.id}">
         <div><b>${sec.id}. ${sec.title}</b></div>
-        <div class="acc">▶</div>
+        <div>▶</div>
       </div>
       <div class="sec-body" id="sec-${sec.id}"></div>
     `;
@@ -211,7 +200,6 @@ function renderSections(){
           <label>หมายเหตุ/หลักฐานประกอบ (ข้อความ)
             <textarea name="note_${qId}" placeholder="เช่น อธิบายมาตรการ, หมายเลขล็อต, ผู้รับผิดชอบ"></textarea>
           </label>
-          <label>แนบรูป (ได้หลายรูป)
             <input type="file" name="photos_${qId}" accept="image/*" multiple>
           </label>
           <div class="preview" data-preview-for="${qId}"></div>
@@ -219,7 +207,6 @@ function renderSections(){
       `;
       body.appendChild(q);
 
-      // preview
       q.querySelector(`input[name="photos_${qId}"]`).addEventListener("change", (e)=>{
         const pv = body.querySelector(`.preview[data-preview-for="${qId}"]`);
         pv.innerHTML = "";
@@ -228,11 +215,6 @@ function renderSections(){
           im.src = URL.createObjectURL(f);
           pv.appendChild(im);
         });
-        updateScore();
-      });
-      // เมื่อเลือก pass/fail อัปเดตคะแนน
-      q.querySelectorAll(`input[name="pass_${qId}"]`).forEach(r=>{
-        r.addEventListener("change", updateScore);
       });
     });
   });
@@ -241,30 +223,10 @@ function renderSections(){
   host.querySelectorAll(".sec-hdr").forEach(h=>{
     h.addEventListener("click", ()=>{
       const body = h.nextElementSibling;
-      const icon = h.querySelector(".acc");
       const opened = body.style.display === "block";
       body.style.display = opened ? "none" : "block";
-      icon.classList.toggle("open", !opened);
     });
   });
-}
-
-function countTotals(){
-  let total=0, pass=0, fail=0;
-  SECTIONS.forEach(sec=>{
-    sec.items.forEach((_, idx)=>{
-      total++;
-      const qId = `${sec.id}_${idx+1}`;
-      const val = (document.querySelector(`input[name="pass_${qId}"]:checked`)||{}).value;
-      if (val==="PASS") pass++;
-      else if (val==="FAIL") fail++;
-    });
-  });
-  return {total, pass, fail};
-}
-function updateScore(){
-  const {total, pass} = countTotals();
-  $("#score").textContent = `ผ่าน ${pass} / ${total}`;
 }
 
 // ===== LIFF + Auth + Upload =====
@@ -294,7 +256,6 @@ async function exchangeToFirebaseToken(idToken){
 function collectAuditData(){
   const farmId = $("#farmId").value.trim();
   const plotId = $("#plotId").value.trim();
-  const geo = { lat: $("#lat").value ? Number($("#lat").value) : null, lng: $("#lng").value ? Number($("#lng").value) : null };
   const answers = [];
   SECTIONS.forEach(sec=>{
     sec.items.forEach((text, idx)=>{
@@ -308,12 +269,11 @@ function collectAuditData(){
       });
     });
   });
-  return { farmId, plotId, geo, answers };
+  return { farmId, plotId, answers };
 }
 
 async function uploadAllPhotosAndAuditJson(uploadPrefix, answers){
   const storage = firebase.storage().ref();
-  // อัปโหลดรูป + เก็บ path ใส่ answers
   for (const a of answers){
     a.photoPaths = [];
     for (const it of a.photos){
@@ -324,9 +284,8 @@ async function uploadAllPhotosAndAuditJson(uploadPrefix, answers){
       await storage.child(path).put(blob, { contentType:"image/jpeg" });
       a.photoPaths.push(path);
     }
-    delete a.photos; // ไม่ส่งไฟล์จริงใน audit.json
+    delete a.photos;
   }
-  // เขียน audit.json ลง Storage
   const auditDoc = {
     standard: "GAqP (Wolffia)",
     generatedAt: new Date().toISOString(),
@@ -336,18 +295,8 @@ async function uploadAllPhotosAndAuditJson(uploadPrefix, answers){
   await storage.child(`${uploadPrefix}/audit/audit.json`).put(auditBlob, { contentType:"application/json" });
 }
 
-function summarizeForDescription(answers){
-  const { total, pass, fail } = countTotals();
-  return `GAqP self-audit: ผ่าน ${pass}/${total}, ไม่ผ่าน ${fail}/${total}`;
-}
-
 window.addEventListener('DOMContentLoaded', async () => {
-  renderSections(); updateScore();
-
-  $("#btnGeo").onclick = ()=>navigator.geolocation.getCurrentPosition(
-    p=>{ $("#lat").value=p.coords.latitude.toFixed(6); $("#lng").value=p.coords.longitude.toFixed(6); },
-    ()=>alert("ดึงพิกัดไม่สำเร็จ")
-  );
+  renderSections();
 
   try {
     await liff.init({ liffId: LIFF_ID });
@@ -369,26 +318,24 @@ window.addEventListener('DOMContentLoaded', async () => {
     $("#submitBtn").onclick = async ()=>{
       try{
         if (!$("#consent").checked) return alert("กรุณายินยอมก่อนส่ง");
-        const { farmId, plotId, geo, answers } = collectAuditData();
+        const { farmId, plotId, answers } = collectAuditData();
         if (!farmId || !plotId) return alert("กรุณากรอกฟาร์ม/แปลงให้ครบ");
 
-        // เตรียม payload ให้เข้ากับ /createIssue เดิม (จะเก็บ audit.json + รูปใน Storage)
-        const desc = summarizeForDescription(answers);
+        // เตรียม payload ให้เข้ากับ /createIssue เดิม (ไม่ใส่พิกัด และไม่มีคะแนน)
         const payload = {
           farmId, plotId,
           crop: null, batch: null,
-          category: "GAQP",           // ใช้แท็กเฉย ๆ
-          severity: 1,                // ไม่ใช้สำหรับ audit
-          description: desc,          // สรุปสั้นใน Firestore
+          category: "GAQP",
+          severity: 1,
+          description: "GAqP self-audit (Wolffia)",
           actionPlan: null, productUsed: null, dose: null, phiDays: null,
-          geo: (geo.lat && geo.lng) ? geo : null,
+          geo: null,
           consent: true
         };
 
-        // ขอ id_token สด ๆ อีกรอบ กันหมดอายุ
         const freshId = await getFreshIdToken();
 
-        // 1) สร้างเอกสาร/รับ uploadPrefix จาก backend เดิม
+        // 1) สร้างเอกสาร/รับ uploadPrefix
         const r = await fetch(CREATE_URL, {
           method:"POST",
           headers: { "Content-Type":"application/json", "Authorization":"Bearer "+freshId },
@@ -398,7 +345,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         if (!r.ok) throw new Error(js?.error || "สร้างรายการไม่สำเร็จ");
         const { issueId, uploadPrefix } = js;
 
-        // 2) อัปโหลดรูปทั้งหมด + เขียน audit.json ลง Storage
+        // 2) อัปโหลดรูป + audit.json
         await uploadAllPhotosAndAuditJson(uploadPrefix, answers);
 
         alert(`ส่งแบบประเมินเรียบร้อย\nรหัสอ้างอิง: ${issueId}`);
