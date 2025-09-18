@@ -284,26 +284,42 @@ exports.ping = onRequest((req, res) => {
 // ---------- /diagSaKey (ตรวจ secret แบบไม่เปิดเผยคีย์) ----------
 exports.diagSaKey = onRequest({ secrets: [SA_KEY_JSON] }, async (req, res) => {
   try {
-    const raw = SA_KEY_JSON.value();
-    const s = sanitizeSaJsonRaw(raw);
-    let ok = false, err = null, info = {};
+    const raw0 = SA_KEY_JSON.value() || "";
+    // ไม่เปิดเผยเนื้อหา: ตรวจแค่รูปแบบอักขระต้นน้ำ
+    const first16 = Array.from(raw0.slice(0, 16)).map(c => c.charCodeAt(0));
+    // sanitize แบบเดียวกับตอนใช้งานจริง
+    const sanitize = (s) => {
+      s = s.replace(/^\uFEFF/, "").trim();            // ตัด BOM
+      s = s.replace(/^```(?:json)?\s*/i, "")
+           .replace(/```$/i, "").trim();              // ตัด ``` ```
+      if (s.startsWith('"') && s.endsWith('"')) {
+        try { s = JSON.parse(s); } catch {}
+      }
+      return s;
+    };
+    const s = sanitize(raw0);
+    let parsed = null, parseError = null, info = {};
     try {
-      const obj = JSON.parse(s);
-      ok = !!(obj.client_email && obj.project_id && obj.private_key);
-      info.project_id = obj.project_id || null;
-      info.client_email = obj.client_email || null;
-      info.private_key_len = obj.private_key ? String(obj.private_key).length : 0;
-      info.private_key_has_escaped_n = obj.private_key ? String(obj.private_key).includes("\\n") : false;
-      info.private_key_has_real_n = obj.private_key ? /\n/.test(String(obj.private_key)) : false;
-    } catch (e) { err = e.message; }
+      parsed = JSON.parse(s);
+      info = {
+        has_client_email: !!parsed.client_email,
+        has_project_id: !!parsed.project_id,
+        private_key_len: parsed.private_key ? String(parsed.private_key).length : 0,
+        private_key_has_escaped_n: parsed.private_key ? String(parsed.private_key).includes("\\n") : false,
+        private_key_has_real_newline: parsed.private_key ? /\n/.test(String(parsed.private_key)) : false,
+      };
+    } catch (e) {
+      parseError = e.message;
+    }
     res.json({
-      ok,
-      parseError: err,
+      ok: !!parsed,
       startsWithLeftBrace: s.trim().startsWith("{"),
-      length: s.length,
+      rawFirst16CharCodes: first16,
+      parseError,
       info
     });
   } catch (e) {
     res.status(500).json({ ok:false, error: String(e?.message || e) });
   }
 });
+
