@@ -230,17 +230,19 @@ exports.ping = onRequest((req, res) => {
   res.json({ ok:true, codebase:"issues", at:new Date().toISOString() });
 });
 
-// ---------- /diagWhoami ----------
-exports.diagWhoami = onRequest(async (req, res) => {
+exports.diagWhoamiIssues = onRequest(async (_req, res) => {
   try {
     const fetch = (...a) => import("node-fetch").then(({ default: f }) => f(...a));
     const r = await fetch(
       "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email",
       { headers: { "Metadata-Flavor": "Google" } }
     );
-    const email = await r.text();
-    res.json({ projectId: PROJECT_ID, runtimeServiceAccount: email || null });
-  } catch {
-    res.json({ projectId: PROJECT_ID, runtimeServiceAccount: null });
+    const email = r.ok ? await r.text() : null;
+    res.json({
+      projectId_env: process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT,
+      runtimeServiceAccount: email,
+    });
+  } catch (e) {
+    res.status(500).json({ ok:false, error: String(e?.message || e) });
   }
 });
