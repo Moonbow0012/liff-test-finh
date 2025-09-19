@@ -221,12 +221,12 @@ async function exchangeToFirebaseToken(lineIdToken){
   let js = null;
   try { js = await r.json(); } catch {}
   if (!r.ok) {
-    const msg = js?.error || js?.message || `authLine HTTP ${r.status}`;
+    // แสดงทั้ง error + message + status เพื่อไล่ปัญหาชัดๆ
+    const msg = `${js?.error ?? ''}${js?.message ? `: ${js.message}` : ''}`.trim() || `authLine HTTP ${r.status}`;
     throw new Error(msg);
   }
   return js.firebaseToken;
 }
-
 
 function collectAuditData(){
   const farmId = (document.querySelector("#farmId").value || "").trim() || null;

@@ -1,24 +1,16 @@
-// functions-issues/index.js
 const admin = require("firebase-admin");
 const { onRequest } = require("firebase-functions/v2/https");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { defineSecret } = require("firebase-functions/params");
 
 try { admin.app(); } catch { admin.initializeApp(); }
+setGlobalOptions({ region: "asia-southeast1", memory: "256MiB", timeoutSeconds: 60 });
 
-setGlobalOptions({
-  region: "asia-southeast1",
-  memory: "256MiB",
-  timeoutSeconds: 60,
-});
-
-/* ---------------- CORS helpers (ใช้ร่วมทุก endpoint) ---------------- */
+/* CORS (allowlist ให้ตรงโดเมนจริง, ไม่มี / ท้าย) */
 const ALLOW_ORIGINS = new Set([
   "https://liff-test-finh.vercel.app",
   "https://liff-test-finh-n8ql.vercel.app",
-  // เพิ่ม origin อื่นได้ที่นี่ (ใส่ให้เป๊ะ ไม่มี / ท้าย)
 ]);
-
 function setCors(req, res) {
   const origin = req.header("Origin");
   res.set("Vary", "Origin");
@@ -34,10 +26,8 @@ function endJson(res, code, obj) {
   return res.status(code).json(obj);
 }
 
-/* ---------------- Secrets ---------------- */
 const LINE_CHANNEL_ID = defineSecret("LINE_CHANNEL_ID");
 
-/* ---------------- authLine: verify LINE id_token -> Firebase custom token ---------------- */
 exports.authLine = onRequest({ secrets: [LINE_CHANNEL_ID] }, async (req, res) => {
   setCors(req, res);
   if (req.method === "OPTIONS") return res.status(204).end();
@@ -46,51 +36,51 @@ exports.authLine = onRequest({ secrets: [LINE_CHANNEL_ID] }, async (req, res) =>
   try {
     const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
     const idToken = body.idToken;
-    if (!idToken) return endJson(res, 400, { ok:false, error:"MISSING_ID_TOKEN" });
+    if (!idToken) return endJson(res, 400, { ok:false, error:"MISSING_ID_TOKEN", message:"no idToken in body" });
 
-    // เรียก LINE verify เพื่อตรวจ id_token
-    // doc: https://developers.line.biz/en/reference/line-login/#verify-id-token
-    const verifyUrl = "https://api.line.me/oauth2/v2.1/verify";
-    const params = new URLSearchParams({
-      id_token: idToken,
-      client_id: LINE_CHANNEL_ID.value(), // ใส่ Channel ID ของคุณ
-    });
-
-    const r = await fetch(verifyUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: params.toString(),
-    });
-
-    const v = await r.json().catch(()=> ({}));
-    if (!r.ok || !v || !v.sub) {
-      return endJson(res, 401, { ok:false, error:"INVALID_LINE_ID_TOKEN", detail: v });
+    const clientId = LINE_CHANNEL_ID.value?.();
+    if (!clientId) {
+      console.error("[authLine] Missing secret LINE_CHANNEL_ID");
+      return endJson(res, 500, { ok:false, error:"MISSING_SECRET", message:"LINE_CHANNEL_ID is empty" });
     }
 
-    const uid = `line_${v.sub}`; // กำหนดรูปแบบ uid
-    // (ออปชัน) ใส่ข้อมูลเสริมบน custom token ได้ เช่น { name: v.name, picture: v.picture }
-    const customToken = await admin.auth().createCustomToken(uid, {
-      name: v.name || null,
-      picture: v.picture || null,
-      email: v.email || null,
-      provider: "line",
-    });
+    // 1) Verify กับ LINE
+    let verifyStatus = -1, verifyJson = null;
+    try {
+      const resp = await fetch("https://api.line.me/oauth2/v2.1/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ id_token: idToken, client_id: clientId }).toString(),
+      });
+      verifyStatus = resp.status;
+      verifyJson = await resp.json().catch(()=> ({}));
+      if (!resp.ok || !verifyJson?.sub) {
+        console.error("[authLine] LINE verify failed", { status: verifyStatus, detail: verifyJson });
+        return endJson(res, 401, { ok:false, error:"INVALID_LINE_ID_TOKEN", message:"LINE verify failed", detail: verifyJson, status: verifyStatus });
+      }
+    } catch (e) {
+      console.error("[authLine] LINE verify error", e);
+      return endJson(res, 502, { ok:false, error:"LINE_VERIFY_NETWORK_ERROR", message: e?.message || String(e) });
+    }
 
-    return endJson(res, 200, {
-      ok: true,
-      firebaseToken: customToken,
-      line: { sub: v.sub, name: v.name || null, picture: v.picture || null, email: v.email || null }
-    });
+    // 2) สร้าง custom token
+    const uid = `line_${verifyJson.sub}`;
+    try {
+      const customToken = await admin.auth().createCustomToken(uid, {
+        name: verifyJson.name || null,
+        picture: verifyJson.picture || null,
+        email: verifyJson.email || null,
+        provider: "line",
+      });
+      return endJson(res, 200, { ok:true, firebaseToken: customToken });
+    } catch (e) {
+      // เคสพบบ่อย: signBlob denied → ต้องให้สิทธิ์ Service Account Token Creator แก่ appspot SA
+      console.error("[authLine] createCustomToken error", e);
+      return endJson(res, 500, { ok:false, error:"CUSTOM_TOKEN_SIGN_ERROR", message: e?.message || String(e) });
+    }
 
-  } catch (err) {
-    return endJson(res, 500, {
-      ok:false,
-      error:"INTERNAL_ERROR",
-      message: err?.message || String(err),
-      code: "FUNCTION_INVOCATION_FAILED"
-    });
+  } catch (e) {
+    console.error("[authLine] INTERNAL_ERROR", e);
+    return endJson(res, 500, { ok:false, error:"INTERNAL_ERROR", message: e?.message || String(e) });
   }
 });
-
-/* ------------------ (ถ้ามีอยู่แล้ว ให้คง createIssue ของคุณไว้ด้านล่าง) ------------------ */
-// exports.createIssue = onRequest(... เดิมของคุณ ...);
