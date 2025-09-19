@@ -2,6 +2,8 @@
 const admin = require("firebase-admin");
 const { onRequest } = require("firebase-functions/v2/https");
 const { setGlobalOptions } = require("firebase-functions/v2");
+const { defineSecret } = require("firebase-functions/params");
+
 try { admin.app(); } catch { admin.initializeApp(); }
 
 setGlobalOptions({
@@ -10,11 +12,11 @@ setGlobalOptions({
   timeoutSeconds: 60,
 });
 
-// ---------- CORS (allowlist แบบเป๊ะ) ----------
+/* ---------------- CORS helpers (ใช้ร่วมทุก endpoint) ---------------- */
 const ALLOW_ORIGINS = new Set([
   "https://liff-test-finh.vercel.app",
   "https://liff-test-finh-n8ql.vercel.app",
-  // เพิ่มโดเมนอื่นของคุณที่ต้องอนุญาตได้ที่นี่
+  // เพิ่ม origin อื่นได้ที่นี่ (ใส่ให้เป๊ะ ไม่มี / ท้าย)
 ]);
 
 function setCors(req, res) {
@@ -27,80 +29,58 @@ function setCors(req, res) {
     res.set("Access-Control-Max-Age", "3600");
   }
 }
-
 function endJson(res, code, obj) {
   res.set("Content-Type", "application/json; charset=utf-8");
   return res.status(code).json(obj);
 }
 
-function sanitizeAuditAnswers(arr) {
-  if (!Array.isArray(arr)) return [];
-  return arr.map(x => ({
-    sectionId: Number(x?.sectionId) || null,
-    sectionTitle: (x?.sectionTitle ?? null),
-    itemNo: (x?.itemNo ?? null),
-    text: (x?.text ?? null),
-    result: (x?.result === "PASS" || x?.result === "FAIL") ? x.result : null
-  }));
-}
+/* ---------------- Secrets ---------------- */
+const LINE_CHANNEL_ID = defineSecret("LINE_CHANNEL_ID");
 
-const CATEGORY_ALLOWED = new Set(["OTHER","GENERAL","ISSUE","WATER","EQUIPMENT","PEST","GAQP"]);
-
-exports.createIssue = onRequest(async (req, res) => {
+/* ---------------- authLine: verify LINE id_token -> Firebase custom token ---------------- */
+exports.authLine = onRequest({ secrets: [LINE_CHANNEL_ID] }, async (req, res) => {
   setCors(req, res);
   if (req.method === "OPTIONS") return res.status(204).end();
   if (req.method !== "POST") return endJson(res, 405, { ok:false, error:"METHOD_NOT_ALLOWED" });
 
   try {
-    // ---- Auth: Firebase ID token ----
-    const authz = req.header("Authorization") || "";
-    const m = authz.match(/^Bearer\s+(.+)$/i);
-    if (!m) return endJson(res, 401, { ok:false, error:"UNAUTHENTICATED", message:"Missing bearer token" });
-    const idToken = m[1];
-    let decoded;
-    try {
-      decoded = await admin.auth().verifyIdToken(idToken);
-    } catch (e) {
-      return endJson(res, 401, { ok:false, error:"UNAUTHENTICATED", message:"Invalid Firebase ID token" });
+    const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
+    const idToken = body.idToken;
+    if (!idToken) return endJson(res, 400, { ok:false, error:"MISSING_ID_TOKEN" });
+
+    // เรียก LINE verify เพื่อตรวจ id_token
+    // doc: https://developers.line.biz/en/reference/line-login/#verify-id-token
+    const verifyUrl = "https://api.line.me/oauth2/v2.1/verify";
+    const params = new URLSearchParams({
+      id_token: idToken,
+      client_id: LINE_CHANNEL_ID.value(), // ใส่ Channel ID ของคุณ
+    });
+
+    const r = await fetch(verifyUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params.toString(),
+    });
+
+    const v = await r.json().catch(()=> ({}));
+    if (!r.ok || !v || !v.sub) {
+      return endJson(res, 401, { ok:false, error:"INVALID_LINE_ID_TOKEN", detail: v });
     }
 
-    // ---- Body ----
-    const b = (typeof req.body === "string") ? JSON.parse(req.body || "{}") : (req.body || {});
-    const farmId = (b.farmId ?? null);
-    const plotId = (b.plotId ?? null);
-    const severity = Number(b.severity) || 1;
-    const description = (b.description ?? null);
-    const consent = Boolean(b.consent);
-    const auditAnswers = sanitizeAuditAnswers(b.auditAnswers);
+    const uid = `line_${v.sub}`; // กำหนดรูปแบบ uid
+    // (ออปชัน) ใส่ข้อมูลเสริมบน custom token ได้ เช่น { name: v.name, picture: v.picture }
+    const customToken = await admin.auth().createCustomToken(uid, {
+      name: v.name || null,
+      picture: v.picture || null,
+      email: v.email || null,
+      provider: "line",
+    });
 
-    // category: default OTHER หากไม่ส่งมา หรือไม่อยู่ใน allowlist
-    let category = (b.category ?? "OTHER");
-    if (!CATEGORY_ALLOWED.has(category)) category = "OTHER";
-
-    // ---- สร้างเอกสาร ----
-    const now = admin.firestore.FieldValue.serverTimestamp();
-    const doc = {
-      farmId,
-      plotId,
-      category,
-      severity,
-      description,
-      geo: b.geo ?? null,
-      consent,
-      auditAnswers,
-      createdAt: now,
-      createdBy: {
-        uid: decoded.uid || null,
-        name: decoded.name || null,
-        picture: decoded.picture || null,
-        provider: decoded.firebase?.sign_in_provider || null
-      },
-      status: "OPEN"
-    };
-
-    const ref = await admin.firestore().collection("farm_issues").add(doc);
-
-    return endJson(res, 200, { ok:true, issueId: ref.id });
+    return endJson(res, 200, {
+      ok: true,
+      firebaseToken: customToken,
+      line: { sub: v.sub, name: v.name || null, picture: v.picture || null, email: v.email || null }
+    });
 
   } catch (err) {
     return endJson(res, 500, {
@@ -111,3 +91,6 @@ exports.createIssue = onRequest(async (req, res) => {
     });
   }
 });
+
+/* ------------------ (ถ้ามีอยู่แล้ว ให้คง createIssue ของคุณไว้ด้านล่าง) ------------------ */
+// exports.createIssue = onRequest(... เดิมของคุณ ...);
