@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>ตรวจสอบสถานะติดตาม | Wolffia</title>
+  <style>
+    body{font-family: system-ui, sans-serif; background:#f7faf9; color:#0f172a; margin:0}
+    .wrap{max-width:760px;margin:24px auto;padding:0 16px}
+    .card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 1px 0 rgba(16,24,40,.04);padding:16px;margin:12px 0}
+    .row{display:flex;gap:10px;flex-wrap:wrap}
+    input[type="text"]{flex:1;padding:12px;border:1px solid #cbd5e1;border-radius:10px}
+    button{padding:12px 16px;border-radius:10px;border:1px solid #0ea5e9;background:#0ea5e9;color:#fff;cursor:pointer}
+    .muted{color:#64748b;font-size:12px}
+    .status{font-weight:700}
+    .tag{display:inline-block;padding:3px 8px;border-radius:999px;border:1px solid #e5e7eb;font-size:12px;background:#f8fafc}
+    .timeline{margin-top:8px;border-left:2px solid #e5e7eb;padding-left:12px}
+    .tl-item{margin:8px 0}
+    .tl-code{font-weight:600}
+    .err{color:#b91c1c}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h2 style="margin:0 0 8px">ตรวจสอบสถานะติดตาม</h2>
+      <div class="muted">กรอกเลขเช่น <b>WX-250919-7F4K2</b></div>
+      <div class="row" style="margin-top:10px">
+        <input id="serial" type="text" placeholder="เช่น WX-250919-7F4K2" />
+        <button id="btn">เช็คสถานะ</button>
+      </div>
+      <div id="msg" class="muted" style="margin-top:8px"></div>
+    </div>
+
+    <div id="result" class="card" style="display:none">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <div>
+          <div id="r-serial" class="status">-</div>
+          <div id="r-title" class="muted">-</div>
+        </div>
+        <div id="r-state" class="tag">-</div>
+      </div>
+      <div style="margin-top:12px">
+        <div class="muted">ไทม์ไลน์ล่าสุด</div>
+        <div id="timeline" class="timeline"></div>
+      </div>
+      <div class="muted" id="r-updated" style="margin-top:6px"></div>
+    </div>
+  </div>
+
+<script>
+  // TODO: ใส่ URL ของ trkGet ของคุณ (ดูจากผล deploy ล่าสุด)
+  // ตัวอย่าง asia-southeast1 (Run domain): "https://trkget-xxxxxx-as.a.run.app"
+  // ตัวอย่าง us-central1 (legacy domain):   "https://us-central1-finh-iot-ai.cloudfunctions.net/trkGet"
+  const API_URL = "https://trkget-iyipepekja-as.a.run.app";
+
+  const $ = s => document.querySelector(s);
+  const fmt = ts => {
+    if (!ts) return "-";
+    // Firestore timestamp object → toDate()
+    try{
+      if (ts.seconds) return new Date(ts.seconds*1000).toLocaleString('th-TH');
+      const d = new Date(ts); return d.toLocaleString('th-TH');
+    }catch{ return "-"; }
+  };
+
+  async function fetchStatus(serial){
+    const url = `${API_URL}?serial=${encodeURIComponent(serial)}`;
+    const r = await fetch(url, { method:"GET" });
+    let js = null;
+    try { js = await r.json(); } catch { throw new Error("ไม่สามารถอ่านข้อมูลที่ตอบกลับได้"); }
+    if (!r.ok || !js?.ok) {
+      const code = js?.error || `HTTP_${r.status}`;
+      throw new Error(code === "NOT_FOUND" ? "ไม่พบเลขติดตามนี้" :
+                      code === "FORBIDDEN" ? "รายการนี้ไม่ได้เปิดสาธารณะ" :
+                      code === "MISSING_SERIAL" ? "กรุณาใส่เลขติดตาม" :
+                      "เกิดข้อผิดพลาด ("+code+")");
+    }
+    return js.tracking;
+  }
+
+  function render(t){
+    $("#result").style.display = "block";
+    $("#r-serial").textContent = t.serial;
+    $("#r-title").textContent  = t.title || "-";
+    $("#r-state").textContent  = t.state || "-";
+    $("#r-updated").textContent = "อัปเดตล่าสุด: " + fmt(t.updatedAt);
+
+    const tl = $("#timeline");
+    tl.innerHTML = "";
+    const items = (t.statusHistory || []).slice(-5).reverse();
+    if (!items.length) {
+      tl.innerHTML = '<div class="muted">ยังไม่มีไทม์ไลน์</div>'; return;
+    }
+    items.forEach(h=>{
+      const el = document.createElement("div");
+      el.className = "tl-item";
+      el.innerHTML = `<div class="tl-code">${h.code}</div>
+                      <div>${h.text||"-"}</div>
+                      <div class="muted">${fmt(h.at)}</div>`;
+      tl.appendChild(el);
+    });
+  }
+
+  $("#btn").onclick = async ()=>{
+    $("#msg").textContent = "";
+    $("#result").style.display = "none";
+    const serial = $("#serial").value.trim().toUpperCase();
+    if (!serial) { $("#msg").textContent = "กรุณาใส่เลขติดตาม"; return; }
+
+    try{
+      $("#msg").textContent = "กำลังดึงข้อมูล...";
+      const t = await fetchStatus(serial);
+      $("#msg").textContent = "";
+      render(t);
+    }catch(e){
+      $("#msg").innerHTML = `<span class="err">${e.message || "เกิดข้อผิดพลาด"}</span>`;
+    }
+  };
+
+  // Enter to submit
+  $("#serial").addEventListener("keydown", (e)=>{ if (e.key === "Enter") $("#btn").click(); });
+</script>
+</body>
+</html>

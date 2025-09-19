@@ -561,3 +561,5 @@ export const diagWhoami = onRequest({ cors: true }, async (_req: Request, res: R
     res.status(500).json({ error: String(e?.message || e) });
   }
 });
+
+export { trkCreate, trkUpdate, trkGet, lineWebhookTracking } from "./tracking.js";
