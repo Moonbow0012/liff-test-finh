@@ -1,248 +1,113 @@
-// firebase/functions-issues/index.js
-const { setGlobalOptions } = require("firebase-functions/v2");
-const { onRequest } = require("firebase-functions/v2/https");
-const { defineSecret } = require("firebase-functions/params");
+// functions-issues/index.js
 const admin = require("firebase-admin");
+const { onRequest } = require("firebase-functions/v2/https");
+const { setGlobalOptions } = require("firebase-functions/v2");
+try { admin.app(); } catch { admin.initializeApp(); }
 
-// ====== CONFIG ======
-const PROJECT_ID =
-  process.env.GOOGLE_CLOUD_PROJECT ||
-  process.env.GCLOUD_PROJECT ||
-  "finh-iot-ai";
-
-const LINE_CHANNEL_ID = defineSecret("LINE_CHANNEL_ID"); // เช่น 2008118596
-
-// Cloud Functions (v2) runtime options: รันด้วย App Engine default SA
 setGlobalOptions({
   region: "asia-southeast1",
-  memory: "512MiB",
+  memory: "256MiB",
   timeoutSeconds: 60,
-  serviceAccount: `${PROJECT_ID}@appspot.gserviceaccount.com`,
 });
 
-// Admin SDK ใช้ ADC + เซ็นผ่าน IAM (signBlob) ในนาม serviceAccountId นี้
-try { admin.app(); } catch {
-  admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
-    serviceAccountId: `${PROJECT_ID}@appspot.gserviceaccount.com`,
-  });
-}
+// ---------- CORS (allowlist แบบเป๊ะ) ----------
+const ALLOW_ORIGINS = new Set([
+  "https://liff-test-finh.vercel.app",
+  "https://liff-test-finh-n8ql.vercel.app",
+  // เพิ่มโดเมนอื่นของคุณที่ต้องอนุญาตได้ที่นี่
+]);
 
-// ---- utils: verify with LINE + peek aud from JWT (debug) ----
-function peekAud(idToken) {
-  try {
-    const part = idToken.split(".")[1];
-    const json = Buffer.from(part, "base64").toString("utf8");
-    return JSON.parse(json)?.aud || null;
-  } catch { return null; }
-}
-
-async function verifyWithLine(idToken, channelIdRaw) {
-  const channelId = String(channelIdRaw || "").trim();
-  const fetch = (...a) => import("node-fetch").then(({ default: f }) => f(...a));
-  const r = await fetch("https://api.line.me/oauth2/v2.1/verify", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ id_token: idToken, client_id: channelId })
-  });
-  const body = await r.json().catch(() => ({}));
-  const ok = r.ok && body?.sub && (body?.aud === channelId || body?.client_id === channelId);
-  if (!ok) throw new Error(`LINE verify failed (${r.status}) cid=${channelId} : ${JSON.stringify(body)}`);
-  return body; // { sub, aud, name?, picture?, exp, ... }
-}
-
-/* ===== CORS ===== */
-const ALLOWED = [
-  /^https?:\/\/localhost(:\d+)?$/i,
-  /^https:\/\/([a-z0-9-]+\.)*vercel\.app$/i,
-  // เพิ่มโดเมนโปรดักชันของคุณ:
-  // /^https:\/\/survey\.yourbrand\.com$/i,
-];
-const DEV_ALLOW_ALL = false;
-
-function isAllowedOrigin(origin = "") {
-  try {
-    const u = new URL(origin);
-    const o = `${u.protocol}//${u.host}`;
-    return ALLOWED.some(re => re.test(o));
-  } catch { return false; }
-}
-
-function applyCors(req, res) {
-  const origin = req.headers.origin || "";
-  const hasOrigin = !!origin;
-  const allowed = DEV_ALLOW_ALL || (hasOrigin && isAllowedOrigin(origin));
-
-  if (allowed) res.set("Access-Control-Allow-Origin", origin);
+function setCors(req, res) {
+  const origin = req.header("Origin");
   res.set("Vary", "Origin");
-  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  res.set("Access-Control-Max-Age", "86400");
-
-  if (req.method === "OPTIONS") { res.status(204).send(""); return true; }
-  if (!hasOrigin) return false;
-  if (!allowed) { console.warn("CORS blocked for origin:", origin); res.status(403).send("CORS blocked"); return true; }
-  return false;
+  if (origin && ALLOW_ORIGINS.has(origin)) {
+    res.set("Access-Control-Allow-Origin", origin);
+    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.set("Access-Control-Max-Age", "3600");
+  }
 }
-/* ================= */
 
-// ---------- /authLine ----------
-exports.authLine = onRequest({ secrets: [LINE_CHANNEL_ID] }, async (req, res) => {
-  if (applyCors(req, res)) return;
-  if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+function endJson(res, code, obj) {
+  res.set("Content-Type", "application/json; charset=utf-8");
+  return res.status(code).json(obj);
+}
 
-  const channelId = (LINE_CHANNEL_ID.value() || "").trim();
-  try {
-    const { idToken } = req.body || {};
-    if (!idToken) return res.status(400).json({ ok:false, where:"authLine/parse", error:"Missing idToken" });
+function sanitizeAuditAnswers(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.map(x => ({
+    sectionId: Number(x?.sectionId) || null,
+    sectionTitle: (x?.sectionTitle ?? null),
+    itemNo: (x?.itemNo ?? null),
+    text: (x?.text ?? null),
+    result: (x?.result === "PASS" || x?.result === "FAIL") ? x.result : null
+  }));
+}
 
-    // STEP 1: verify กับ LINE
-    let profile;
-    try {
-      profile = await verifyWithLine(idToken, channelId);
-    } catch (e) {
-      console.error("authLine.verify", e?.message || e);
-      return res.status(401).json({
-        ok:false,
-        where:"authLine/verify",
-        error:String(e?.message || e),
-        audFromToken: peekAud(idToken)
-      });
-    }
+const CATEGORY_ALLOWED = new Set(["OTHER","GENERAL","ISSUE","WATER","EQUIPMENT","PEST","GAQP"]);
 
-    const uid = `line_${profile.sub}`;
-
-    // STEP 2: ensure user (ใช้ admin.auth() ของ default app)
-    try {
-      await admin.auth().getUser(uid);
-    } catch (e) {
-      if (e && e.code === "auth/user-not-found") {
-        try {
-          await admin.auth().createUser({ uid, displayName: profile.name || "LINE User" });
-        } catch (e2) {
-          console.error("authLine.createUser", e2?.message || e2);
-          return res.status(500).json({ ok:false, where:"authLine/createUser", error:String(e2?.message || e2) });
-        }
-      } else {
-        console.error("authLine.getUser", e?.message || e);
-        return res.status(500).json({ ok:false, where:"authLine/getUser", error:String(e?.message || e) });
-      }
-    }
-
-    // STEP 3: issue custom token (เบื้องหลังจะเรียก IAM signBlob ให้เอง)
-    try {
-      const firebaseToken = await admin.auth().createCustomToken(uid, { lineSub: profile.sub });
-      return res.json({ ok:true, firebaseToken, displayName: profile.name || null });
-    } catch (e) {
-      console.error("authLine.customToken", e?.message || e);
-      return res.status(500).json({ ok:false, where:"authLine/customToken", error:String(e?.message || e) });
-    }
-  } catch (e) {
-    console.error("authLine.unknown", e?.message || e);
-    return res.status(500).json({ ok:false, where:"authLine/unknown", error:String(e?.message || e) });
-  }
-});
-
-// ---------- /createIssue ----------
-exports.createIssue = onRequest({ secrets: [LINE_CHANNEL_ID] }, async (req, res) => {
-  if (applyCors(req, res)) return;
-  if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
-
-  const channelId = (LINE_CHANNEL_ID.value() || "").trim();
-  const t0 = Date.now();
+exports.createIssue = onRequest(async (req, res) => {
+  setCors(req, res);
+  if (req.method === "OPTIONS") return res.status(204).end();
+  if (req.method !== "POST") return endJson(res, 405, { ok:false, error:"METHOD_NOT_ALLOWED" });
 
   try {
-    const idToken = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
-    if (!idToken) return res.status(401).json({ ok:false, where:"createIssue/auth", error:"Missing Authorization" });
-
-    // STEP 1: verify
-    let profile;
+    // ---- Auth: Firebase ID token ----
+    const authz = req.header("Authorization") || "";
+    const m = authz.match(/^Bearer\s+(.+)$/i);
+    if (!m) return endJson(res, 401, { ok:false, error:"UNAUTHENTICATED", message:"Missing bearer token" });
+    const idToken = m[1];
+    let decoded;
     try {
-      profile = await verifyWithLine(idToken, channelId);
+      decoded = await admin.auth().verifyIdToken(idToken);
     } catch (e) {
-      console.error("createIssue.verify", e?.message || e);
-      return res.status(401).json({
-        ok:false, where:"createIssue/verify",
-        error:String(e?.message || e), audFromToken: peekAud(idToken)
-      });
-    }
-    const uid = `line_${profile.sub}`;
-
-    // STEP 2: validate
-    let b;
-    try {
-      b = require("./lib/validate").pickIssuePayload(req.body || {});
-    } catch (e) {
-      return res.status(400).json({ ok:false, where:"createIssue/validate", error:String(e?.message || e) });
+      return endJson(res, 401, { ok:false, error:"UNAUTHENTICATED", message:"Invalid Firebase ID token" });
     }
 
-    // STEP 3: write
-    try {
-      const db = admin.firestore();
-      const doc = {
-        ...b,
-        reporter: { uid, displayName: profile.name || null },
-        status: "OPEN",
-        photos: [],
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        createdBy: uid,
-        reviewedAt: null, reviewedBy: null, revision: 0
-      };
-      const ref = await db.collection("farm_issues").add(doc);
-      return res.json({
-        ok:true,
-        issueId: ref.id,
-        uploadPrefix: `issues/${b.farmId}/${ref.id}`,
-        storageBucket: admin.app().options.storageBucket,
-        tookMs: Date.now() - t0
-      });
-    } catch (e) {
-      console.error("createIssue.firestore", e?.message || e);
-      return res.status(500).json({ ok:false, where:"createIssue/firestore", error:String(e?.message || e) });
-    }
-  } catch (e) {
-    console.error("createIssue.unknown", e?.message || e);
-    return res.status(500).json({ ok:false, where:"createIssue/unknown", error:String(e?.message || e) });
-  }
-});
+    // ---- Body ----
+    const b = (typeof req.body === "string") ? JSON.parse(req.body || "{}") : (req.body || {});
+    const farmId = (b.farmId ?? null);
+    const plotId = (b.plotId ?? null);
+    const severity = Number(b.severity) || 1;
+    const description = (b.description ?? null);
+    const consent = Boolean(b.consent);
+    const auditAnswers = sanitizeAuditAnswers(b.auditAnswers);
 
-// ---------- /diagVerify ----------
-exports.diagVerify = onRequest({ secrets: [LINE_CHANNEL_ID] }, async (req, res) => {
-  if (applyCors(req, res)) return;
-  if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
-  try {
-    const idToken = (req.body && req.body.idToken) || "";
-    const channelId = (LINE_CHANNEL_ID.value() || "").trim();
-    const body = await verifyWithLine(idToken, channelId);
-    res.json({ usedClientId: channelId, body });
-  } catch (e) {
-    res.status(401).json({ ok:false, where:"diagVerify", error:String(e?.message || e) });
-  }
-});
+    // category: default OTHER หากไม่ส่งมา หรือไม่อยู่ใน allowlist
+    let category = (b.category ?? "OTHER");
+    if (!CATEGORY_ALLOWED.has(category)) category = "OTHER";
 
-// ---------- storage trigger ----------
-const { onIssuePhotoUploaded } = require("./triggers/onIssuePhotoUploaded");
-exports.onIssuePhotoUploaded = onIssuePhotoUploaded({ admin });
+    // ---- สร้างเอกสาร ----
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const doc = {
+      farmId,
+      plotId,
+      category,
+      severity,
+      description,
+      geo: b.geo ?? null,
+      consent,
+      auditAnswers,
+      createdAt: now,
+      createdBy: {
+        uid: decoded.uid || null,
+        name: decoded.name || null,
+        picture: decoded.picture || null,
+        provider: decoded.firebase?.sign_in_provider || null
+      },
+      status: "OPEN"
+    };
 
-// ---------- /ping ----------
-exports.ping = onRequest((req, res) => {
-  if (applyCors(req, res)) return;
-  res.json({ ok:true, codebase:"issues", at:new Date().toISOString() });
-});
+    const ref = await admin.firestore().collection("farm_issues").add(doc);
 
-exports.diagWhoamiIssues = onRequest(async (_req, res) => {
-  try {
-    const fetch = (...a) => import("node-fetch").then(({ default: f }) => f(...a));
-    const r = await fetch(
-      "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email",
-      { headers: { "Metadata-Flavor": "Google" } }
-    );
-    const email = r.ok ? await r.text() : null;
-    res.json({
-      projectId_env: process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT,
-      runtimeServiceAccount: email,
+    return endJson(res, 200, { ok:true, issueId: ref.id });
+
+  } catch (err) {
+    return endJson(res, 500, {
+      ok:false,
+      error:"INTERNAL_ERROR",
+      message: err?.message || String(err),
+      code: "FUNCTION_INVOCATION_FAILED"
     });
-  } catch (e) {
-    res.status(500).json({ ok:false, error: String(e?.message || e) });
   }
 });

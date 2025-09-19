@@ -4,7 +4,6 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>GAqP Self-Audit (Wolffia)</title>
-  <link rel="stylesheet" href="./styles.css"/>
   <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.13.1/firebase-auth-compat.js"></script>
@@ -16,7 +15,7 @@
     .card { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:14px; margin:12px 0; box-shadow: 0 1px 0 rgba(16,24,40,.04); }
     .row { display:flex; gap:12px; flex-wrap:wrap; }
     label.inline { display:flex; align-items:center; gap:8px; }
-    input[type="text"], textarea, select { width:100%; padding:10px; border:1px solid #d1d5db; border-radius:10px; background:#fff; }
+    input[type="text"] { width:100%; padding:10px; border:1px solid #d1d5db; border-radius:10px; background:#fff; }
     .btn { appearance:none; border:1px solid #0ea5e9; background:#0ea5e9; color:#fff; border-radius:10px; padding:10px 14px; cursor:pointer; }
     .btn.outline { background:#fff; border-color:#94a3b8; color:#334155; }
     .muted { color:#64748b; font-size:12px; }
@@ -41,7 +40,7 @@
   </header>
 
   <div class="wrap">
-    <!-- การ์ดผู้ใช้ -->
+    <!-- ผู้ใช้ -->
     <section id="userCard" class="card">
       <div class="row" style="align-items:center; justify-content:space-between;">
         <div class="row" style="align-items:center;">
@@ -58,12 +57,13 @@
     <!-- ข้อมูลฟาร์ม -->
     <section class="card">
       <div class="row">
-        <label style="flex:1">ฟาร์ม (farmId)<br><input name="farmId" id="farmId" required placeholder="เช่น farm-1"></label>
-        <label style="flex:1">แปลง (plotId)<br><input name="plotId" id="plotId" required placeholder="เช่น P01"></label>
+        <label style="flex:1">ฟาร์ม (farmId)<br><input name="farmId" id="farmId" placeholder="เช่น farm-1"></label>
+        <label style="flex:1">แปลง (plotId)<br><input name="plotId" id="plotId" placeholder="เช่น P01"></label>
       </div>
+      <div class="muted" style="margin-top:6px">* ไม่บังคับกรอกครบ ส่งเพื่อเก็บข้อมูลได้เลย</div>
     </section>
 
-    <!-- แบบประเมิน 11 หมวด -->
+    <!-- แบบประเมิน -->
     <form id="auditForm" class="card" style="padding:0">
       <div id="sections"></div>
       <div style="padding:12px">
@@ -73,14 +73,14 @@
   </div>
 
   <div class="sticky-foot">
-    <button id="submitBtn" class="btn">ส่งแบบประเมิน</button>
+    <button id="submitBtn" class="btn">บันทึกข้อมูล</button>
   </div>
 
 <script>
 /* ======= ตั้งค่าโปรเจกต์คุณ ======= */
-const LIFF_ID    = "2008118596-nMd5qQ38"; // <- LIFF ID ของคุณ
-const AUTH_URL   = "https://authline-iyipepekja-as.a.run.app";    // functions URL จริง
-const CREATE_URL = "https://createissue-iyipepekja-as.a.run.app"; // functions URL จริง
+const LIFF_ID    = "2008118596-nMd5qQ38";
+const AUTH_URL   = "https://authline-iyipepekja-as.a.run.app";         // ฟังก์ชันแลก custom token
+const CREATE_URL = "https://createissue-iyipepekja-as.a.run.app";      // ฟังก์ชันบันทึกฟอร์ม
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyCnNQdOzThqmT3Wgvir2x4yrpiygKQKbV8",
   authDomain: "finh-iot-ai.firebaseapp.com",
@@ -91,7 +91,7 @@ const FIREBASE_CONFIG = {
 const REQUIRED_SCOPE = ['openid','profile','email'];
 const $ = (s)=>document.querySelector(s);
 
-// ===== นิยามโครงสร้าง 11 หมวด =====
+// 11 หมวด (สองช้อยส์—ผ่าน/ไม่ผ่าน—ไม่มีสรุป)
 const SECTIONS = [
   { id:1, title:"สถานที่ตั้งฟาร์ม", items:[
     "พื้นที่ตั้งฟาร์มอยู่ใกล้แหล่งมลพิษหรือแหล่งปนเปื้อน เช่น โรงงานอุตสาหกรรม เกษตรกรรมที่ใช้สารเคมี หรือไม่",
@@ -152,9 +152,8 @@ const SECTIONS = [
   ]},
 ];
 
-// เรนเดอร์ UI (เหลือเฉพาะ ผ่าน/ไม่ผ่าน)
 function renderSections(){
-  const host = $("#sections");
+  const host = document.querySelector("#sections");
   host.innerHTML = "";
   SECTIONS.forEach(sec=>{
     const secEl = document.createElement("div");
@@ -177,7 +176,7 @@ function renderSections(){
         <div class="q-title">${sec.id}.${idx+1} ${text}</div>
         <div class="q-grid">
           <div class="row">
-            <label class="inline"><input type="radio" name="pass_${qId}" value="PASS" required> ผ่าน</label>
+            <label class="inline"><input type="radio" name="pass_${qId}" value="PASS"> ผ่าน</label>
             <label class="inline"><input type="radio" name="pass_${qId}" value="FAIL"> ไม่ผ่าน</label>
           </div>
         </div>
@@ -190,51 +189,44 @@ function renderSections(){
   host.querySelectorAll(".sec-hdr").forEach(h=>{
     h.addEventListener("click", ()=>{
       const body = h.nextElementSibling;
-      const opened = body.style.display === "block";
-      body.style.display = opened ? "none" : "block";
+      body.style.display = (body.style.display === "block") ? "none" : "block";
     });
   });
+
+  // เปิดหมวดแรก
+  const first = host.querySelector(".sec-body");
+  if (first) first.style.display = "block";
 }
 
-// ===== LIFF + Auth =====
-async function getFreshIdToken(){
+// ==== Auth helpers ====
+async function getFreshLineIdToken(){
   if (!liff.isLoggedIn()) {
     liff.login({ scope: REQUIRED_SCOPE, redirectUri: location.href });
     return new Promise(()=>{});
   }
   const idToken = liff.getIDToken();
   const decoded = liff.getDecodedIDToken?.();
-  if (!idToken || !decoded) {
-    liff.logout(); liff.login({ scope: REQUIRED_SCOPE, redirectUri: location.href }); return new Promise(()=>{});
-  }
-  const exp = (decoded.exp||0)*1000;
-  if (Date.now() > exp - 15000) {
-    liff.logout(); liff.login({ scope: REQUIRED_SCOPE, redirectUri: location.href }); return new Promise(()=>{});
-  }
+  if (!idToken || !decoded) { liff.logout(); liff.login({ scope: REQUIRED_SCOPE, redirectUri: location.href }); return new Promise(()=>{}); }
+  const expMs = (decoded.exp||0)*1000;
+  if (Date.now() > expMs - 15000) { liff.logout(); liff.login({ scope: REQUIRED_SCOPE, redirectUri: location.href }); return new Promise(()=>{}); }
   return idToken;
 }
 
-async function exchangeToFirebaseToken(idToken){
-  const r = await fetch(AUTH_URL, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ idToken }) });
+async function exchangeToFirebaseToken(lineIdToken){
+  const r = await fetch(AUTH_URL, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ idToken: lineIdToken }) });
   if (!r.ok) throw new Error("authLine failed");
   const js = await r.json(); return js.firebaseToken;
 }
 
 function collectAuditData(){
-  const farmId = $("#farmId").value.trim();
-  const plotId = $("#plotId").value.trim();
+  const farmId = (document.querySelector("#farmId").value || "").trim() || null;
+  const plotId = (document.querySelector("#plotId").value || "").trim() || null;
   const answers = [];
   SECTIONS.forEach(sec=>{
     sec.items.forEach((text, idx)=>{
       const qId = `${sec.id}_${idx+1}`;
       const val = (document.querySelector(`input[name="pass_${qId}"]:checked`)||{}).value || null;
-      answers.push({
-        sectionId: sec.id,
-        sectionTitle: sec.title,
-        itemNo: `${sec.id}.${idx+1}`,
-        text,
-        result: val
-      });
+      answers.push({ sectionId: sec.id, sectionTitle: sec.title, itemNo: `${sec.id}.${idx+1}`, text, result: val });
     });
   });
   return { farmId, plotId, answers };
@@ -245,62 +237,51 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   try {
     await liff.init({ liffId: LIFF_ID });
-    const idToken = await getFreshIdToken();
+    const lineIdToken = await getFreshLineIdToken();
 
     // โปรไฟล์
     const prof = await liff.getProfile();
-    $("#uimg").src = prof.pictureUrl || "";
-    $("#uname").textContent = prof.displayName || "LINE User";
-    $("#uid").textContent = `uid: ${prof.userId}`;
-    $("#logout").onclick = ()=>{ liff.logout(); location.reload(); };
+    document.querySelector("#uimg").src = prof.pictureUrl || "";
+    document.querySelector("#uname").textContent = prof.displayName || "LINE User";
+    document.querySelector("#uid").textContent = `uid: ${prof.userId}`;
+    document.querySelector("#logout").onclick = ()=>{ liff.logout(); location.reload(); };
 
-    // แลก Firebase custom token + sign in
-    const firebaseToken = await exchangeToFirebaseToken(idToken);
+    // แลก custom token + sign in Firebase
+    const firebaseToken = await exchangeToFirebaseToken(lineIdToken);
     if (!firebase.apps?.length) firebase.initializeApp(FIREBASE_CONFIG);
     await firebase.auth().signInWithCustomToken(firebaseToken);
 
-    // ส่งแบบประเมิน
-    $("#submitBtn").onclick = async ()=>{
+    // ปุ่มบันทึก
+    document.querySelector("#submitBtn").onclick = async ()=>{
       try{
-        if (!$("#consent").checked) return alert("กรุณายินยอมก่อนส่ง");
+        if (!document.querySelector("#consent").checked) return alert("กรุณายินยอมก่อนส่ง");
         const { farmId, plotId, answers } = collectAuditData();
-        if (!farmId || !plotId) return alert("กรุณากรอกฟาร์ม/แปลงให้ครบ");
 
-        // สรุปผลรวมให้ backend ใช้ง่าย
-        const total = answers.length;
-        const passCount = answers.filter(a=>a.result==='PASS').length;
-        const failCount = total - passCount;
+        // ใช้ Firebase ID token สำหรับ backend
+        const fbIdToken = await firebase.auth().currentUser.getIdToken(true);
 
-        // payload เข้ากับ /createIssue (แนบ auditAnswers ด้วย)
         const payload = {
+          // ไม่ส่ง category ไป ให้ backend ใส่ค่า default เอง
           farmId, plotId,
-          crop: null, batch: null,
-          category: "GAQP",
           severity: 1,
-          description: "GAqP self-audit (Wolffia) — pass/fail only",
-          actionPlan: null, productUsed: null, dose: null, phiDays: null,
-          geo: null,
+          description: "GAqP self-audit (data-only)",
           consent: true,
-          auditSummary: { total, pass: passCount, fail: failCount },
           auditAnswers: answers
         };
 
-        const freshId = await getFreshIdToken();
-
-        // 1) สร้างเอกสาร (เวอร์ชันใหม่ไม่มีการอัปโหลดรูป/ไฟล์)
         const r = await fetch(CREATE_URL, {
           method:"POST",
-          headers: { "Content-Type":"application/json", "Authorization":"Bearer "+freshId },
+          headers: { "Content-Type":"application/json", "Authorization": "Bearer " + fbIdToken },
           body: JSON.stringify(payload)
         });
         const js = await r.json().catch(()=> ({}));
-        if (!r.ok) throw new Error(js?.error || "สร้างรายการไม่สำเร็จ");
+        if (!r.ok) throw new Error(js?.error || "บันทึกไม่สำเร็จ");
 
-        alert(`ส่งแบบประเมินเรียบร้อย\nรหัสอ้างอิง: ${js.issueId || '-'}`);
+        alert(`บันทึกข้อมูลเรียบร้อย\nรหัส: ${js.issueId || '-'}`);
         if (liff.isInClient()) liff.closeWindow();
       }catch(e){
         console.error(e);
-        alert(e.message || "ส่งแบบประเมินไม่สำเร็จ");
+        alert(e.message || "บันทึกไม่สำเร็จ");
       }
     };
 
