@@ -106,6 +106,21 @@ const FIREBASE_CONFIG = {
 
 const REQUIRED_SCOPE = ['openid','profile','email'];
 const $ = s => document.querySelector(s);
+// ————— Helpers —————
+async function ensureLiffLogin() {
+  await liff.init({ liffId: LIFF_ID, withLoginOnExternalBrowser: true });
+  if (!liff.isLoggedIn()) {
+    // กลับมาหน้านี้หลัง login
+    liff.login({ redirectUri: location.href });
+    // หยุด execution ไว้จน redirect กลับมา
+    await new Promise(()=>{});
+  }
+}
+
+function isIdTokenNearExpiry(decoded) {
+  const expMs = (decoded?.exp || 0) * 1000;
+  return Date.now() > expMs - 15_000; // น้อยกว่า 15 วินาทีก่อนหมดอายุ
+}
 
 async function getFreshIdTokenFromLIFF(){
   if (!liff.isLoggedIn()) { liff.login({ scope: REQUIRED_SCOPE, redirectUri: location.href }); await new Promise(()=>{}); }
