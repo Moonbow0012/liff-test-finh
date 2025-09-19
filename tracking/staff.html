@@ -104,8 +104,8 @@ const FIREBASE_CONFIG = {
 };
 /* ========================== */
 
-const REQUIRED_SCOPE = ['openid','profile','email'];
 const $ = s => document.querySelector(s);
+
 // ————— Helpers —————
 async function ensureLiffLogin() {
   await liff.init({ liffId: LIFF_ID, withLoginOnExternalBrowser: true });
@@ -122,25 +122,25 @@ function isIdTokenNearExpiry(decoded) {
   return Date.now() > expMs - 15_000; // น้อยกว่า 15 วินาทีก่อนหมดอายุ
 }
 
-async function getFreshIdTokenFromLIFF(){
-  if (!liff.isLoggedIn()) { liff.login({ scope: REQUIRED_SCOPE, redirectUri: location.href }); await new Promise(()=>{}); }
-  const idToken = liff.getIDToken(); const decoded = liff.getDecodedIDToken?.();
-  if (!idToken || !decoded) { liff.logout(); liff.login({ scope: REQUIRED_SCOPE, redirectUri: location.href }); await new Promise(()=>{}); }
-  const exp = (decoded.exp||0)*1000;
-  if (Date.now() > exp - 15000) { liff.logout(); liff.login({ scope: REQUIRED_SCOPE, redirectUri: location.href }); await new Promise(()=>{}); }
-  return idToken;
-}
-async function exchangeCustomToken(idToken){
-  const r = await fetch(AUTH_URL, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ idToken }) });
+async function getFirebaseIdToken() {
+  // ต้องแน่ใจก่อนว่า login แล้ว
+  await ensureLiffLogin();
+
+  // ถ้า id_token หาย/ใกล้หมด ให้ re-login
+  const idToken = liff.getIDToken();
+  const decoded = liff.getDecodedIDToken?.();
+  if (!idToken || !decoded || isIdTokenNearExpiry(decoded)) {
+    liff.login({ redirectUri: location.href });
+    await new Promise(()=>{});
+  }
+
+  // แลกเป็น custom token -> sign in Firebase -> เอา Firebase ID token
+  const r = await fetch(AUTH_URL, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ idToken: liff.getIDToken() }) });
   const js = await r.json().catch(()=> ({}));
   if (!r.ok || !js.firebaseToken) throw new Error(js?.error || "authLine failed");
-  return js.firebaseToken;
-}
-async function getFirebaseIdToken(){
-  const idToken = await getFreshIdTokenFromLIFF();
-  const customToken = await exchangeCustomToken(idToken);
+
   if (!firebase.apps?.length) firebase.initializeApp(FIREBASE_CONFIG);
-  await firebase.auth().signInWithCustomToken(customToken);
+  await firebase.auth().signInWithCustomToken(js.firebaseToken);
   return await firebase.auth().currentUser.getIdToken(/*forceRefresh=*/true);
 }
 
@@ -152,13 +152,17 @@ async function callAuthed(url, body){
   return js;
 }
 
+// ————— Page init —————
 window.addEventListener("DOMContentLoaded", async ()=>{
   try{
-    await liff.init({ liffId: LIFF_ID });
-    const profile = await liff.getProfile();
-    $("#who").textContent = `เข้าสู่ระบบ: ${profile.displayName} (${profile.userId})`;
+    await ensureLiffLogin();
+
+    // ตรงนี้เรียกได้แล้ว เพราะ login ชัวร์
+    const prof = await liff.getProfile();
+    $("#who").textContent = `เข้าสู่ระบบ: ${prof.displayName} (${prof.userId})`;
     $("#btnLogout").onclick = ()=>{ liff.logout(); location.reload(); };
 
+    // Create
     $("#btnCreate").onclick = async ()=>{
       $("#createMsg").textContent = "กำลังสร้าง...";
       $("#created").style.display = "none";
@@ -172,14 +176,15 @@ window.addEventListener("DOMContentLoaded", async ()=>{
         const js = await callAuthed(TRK_CREATE_URL, payload);
         $("#createMsg").textContent = "";
         $("#created").style.display = "block";
-        $("#created").textContent = "สร้างสำเร็จ: " + js.serial + " (คัดลอกไปใส่หน้า public/LINE ได้เลย)";
+        $("#created").textContent = "สร้างสำเร็จ: " + js.serial;
         navigator.clipboard?.writeText(js.serial).catch(()=>{});
-        $("#serial").value = js.serial; // เติมให้สะดวกสำหรับอัปเดตต่อ
+        $("#serial").value = js.serial;
       }catch(e){
         $("#createMsg").innerHTML = `<span class="err">${e.message||e}</span>`;
       }
     };
 
+    // Update
     $("#btnUpdate").onclick = async ()=>{
       $("#updateMsg").textContent = "กำลังอัปเดต...";
       try{
