@@ -14,7 +14,9 @@ if (!getApps().length) initializeApp();
 const ALLOW_ORIGINS = new Set([
   "https://liff-test-finh.vercel.app",
   "https://liff-test-finh-n8ql.vercel.app",
-  // ใส่โดเมนหน้าเว็บอื่น ๆ เพิ่มตรงนี้ (ห้ามมี "/" ท้าย)
+  "https://liff-test-finh-tracking.vercel.app",
+  "/^https:\/\/liff-test-finh-[a-z0-9-]+\.vercel\.app$/i",
+  "/^https:\/\/liff-test-finh-tracking-[a-z0-9-]+\.vercel\.app$/i"
 ]);
 
 function setCors(req: any, res: any): void {

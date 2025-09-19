@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Staff | Tracking Console</title>
+  <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.13.1/firebase-auth-compat.js"></script>
+  <style>
+    body{font-family:system-ui,sans-serif;background:#f7faf9;color:#0f172a;margin:0}
+    .wrap{max-width:820px;margin:20px auto;padding:0 16px}
+    .card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 1px 0 rgba(16,24,40,.04);padding:16px;margin:12px 0}
+    input,select,button,textarea{padding:10px;border:1px solid #cbd5e1;border-radius:10px}
+    input,select,textarea{width:100%}
+    .row{display:flex;gap:10px;flex-wrap:wrap}
+    .btn{background:#0ea5e9;color:#fff;border:1px solid #0ea5e9;cursor:pointer}
+    .btn.outline{background:#fff;color:#334155;border-color:#94a3b8}
+    .muted{color:#64748b;font-size:12px}
+    .two>*{flex:1}
+    .ok{color:#16a34a}
+    .err{color:#b91c1c}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h2 style="margin:0 0 8px">Tracking Console (Staff)</h2>
+    <div id="who" class="muted">กำลังเข้าสู่ระบบ...</div>
+    <div style="margin-top:8px"><button id="btnLogout" class="btn outline">ออกจากระบบ</button></div>
+  </div>
+
+  <!-- สร้างเลขติดตาม -->
+  <div class="card">
+    <h3 style="margin:0 0 8px">สร้างเลขติดตามใหม่</h3>
+    <div class="row two">
+      <label>หัวข้อ/ชื่องาน
+        <input id="title" placeholder="เช่น GAqP Tracking"/>
+      </label>
+      <label>ฟาร์ม (farmId)
+        <input id="farmId" placeholder="เช่น farm-1"/>
+      </label>
+    </div>
+    <div class="row two" style="margin-top:8px">
+      <label>แปลง (plotId)
+        <input id="plotId" placeholder="เช่น P01"/>
+      </label>
+      <label>ข้อความเริ่มต้น (optional)
+        <input id="firstText" placeholder="เช่น สร้างคำขอแล้ว"/>
+      </label>
+    </div>
+    <div style="margin-top:10px">
+      <button id="btnCreate" class="btn">สร้างเลขติดตาม</button>
+      <span id="createMsg" class="muted"></span>
+    </div>
+    <div id="created" class="ok" style="margin-top:8px;display:none"></div>
+  </div>
+
+  <!-- อัปเดตสถานะ -->
+  <div class="card">
+    <h3 style="margin:0 0 8px">อัปเดตสถานะ</h3>
+    <div class="row two">
+      <label>เลขติดตาม (serial)
+        <input id="serial" placeholder="WX-YYMMDD-XXXXX"/>
+      </label>
+      <label>สถานะ
+        <select id="code">
+          <option>CREATED</option>
+          <option>RECEIVED</option>
+          <option>IN_PROGRESS</option>
+          <option>QA</option>
+          <option>COMPLETED</option>
+          <option>ON_HOLD</option>
+          <option>CANCELLED</option>
+          <option>FAILED</option>
+        </select>
+      </label>
+    </div>
+    <div class="row two" style="margin-top:8px">
+      <label>ข้อความ (จะแสดงในไทม์ไลน์)
+        <input id="text" placeholder="เช่น กำลังดำเนินการ"/>
+      </label>
+      <label>ระดับ (0-4)
+        <input id="level" type="number" min="0" max="4" value="1"/>
+      </label>
+    </div>
+    <div style="margin-top:10px">
+      <button id="btnUpdate" class="btn">อัปเดต</button>
+      <span id="updateMsg" class="muted"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ====== ตั้งค่าของคุณ ====== */
+const LIFF_ID = "2008118596-nMd5qQ38"; // ใช้ LIFF เดิมได้
+const AUTH_URL = "https://authline-iyipepekja-as.a.run.app";
+const TRK_CREATE_URL = "https://trkcreate-iyipepekja-as.a.run.app";
+const TRK_UPDATE_URL = "https://trkupdate-iyipepekja-as.a.run.app";
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCnNQdOzThqmT3Wgvir2x4yrpiygKQKbV8",
+  authDomain: "finh-iot-ai.firebaseapp.com",
+  projectId: "finh-iot-ai"
+};
+/* ========================== */
+
+const REQUIRED_SCOPE = ['openid','profile','email'];
+const $ = s => document.querySelector(s);
+
+async function getFreshIdTokenFromLIFF(){
+  if (!liff.isLoggedIn()) { liff.login({ scope: REQUIRED_SCOPE, redirectUri: location.href }); await new Promise(()=>{}); }
+  const idToken = liff.getIDToken(); const decoded = liff.getDecodedIDToken?.();
+  if (!idToken || !decoded) { liff.logout(); liff.login({ scope: REQUIRED_SCOPE, redirectUri: location.href }); await new Promise(()=>{}); }
+  const exp = (decoded.exp||0)*1000;
+  if (Date.now() > exp - 15000) { liff.logout(); liff.login({ scope: REQUIRED_SCOPE, redirectUri: location.href }); await new Promise(()=>{}); }
+  return idToken;
+}
+async function exchangeCustomToken(idToken){
+  const r = await fetch(AUTH_URL, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ idToken }) });
+  const js = await r.json().catch(()=> ({}));
+  if (!r.ok || !js.firebaseToken) throw new Error(js?.error || "authLine failed");
+  return js.firebaseToken;
+}
+async function getFirebaseIdToken(){
+  const idToken = await getFreshIdTokenFromLIFF();
+  const customToken = await exchangeCustomToken(idToken);
+  if (!firebase.apps?.length) firebase.initializeApp(FIREBASE_CONFIG);
+  await firebase.auth().signInWithCustomToken(customToken);
+  return await firebase.auth().currentUser.getIdToken(/*forceRefresh=*/true);
+}
+
+async function callAuthed(url, body){
+  const fbId = await getFirebaseIdToken();
+  const r = await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+fbId }, body: JSON.stringify(body||{}) });
+  const js = await r.json().catch(()=> ({}));
+  if (!r.ok || !js.ok) throw new Error(js?.error || ("HTTP_"+r.status));
+  return js;
+}
+
+window.addEventListener("DOMContentLoaded", async ()=>{
+  try{
+    await liff.init({ liffId: LIFF_ID });
+    const profile = await liff.getProfile();
+    $("#who").textContent = `เข้าสู่ระบบ: ${profile.displayName} (${profile.userId})`;
+    $("#btnLogout").onclick = ()=>{ liff.logout(); location.reload(); };
+
+    $("#btnCreate").onclick = async ()=>{
+      $("#createMsg").textContent = "กำลังสร้าง...";
+      $("#created").style.display = "none";
+      try{
+        const payload = {
+          title: $("#title").value.trim() || "GAqP Tracking",
+          farmId: $("#farmId").value.trim() || null,
+          plotId: $("#plotId").value.trim() || null,
+          firstText: $("#firstText").value.trim() || undefined
+        };
+        const js = await callAuthed(TRK_CREATE_URL, payload);
+        $("#createMsg").textContent = "";
+        $("#created").style.display = "block";
+        $("#created").textContent = "สร้างสำเร็จ: " + js.serial + " (คัดลอกไปใส่หน้า public/LINE ได้เลย)";
+        navigator.clipboard?.writeText(js.serial).catch(()=>{});
+        $("#serial").value = js.serial; // เติมให้สะดวกสำหรับอัปเดตต่อ
+      }catch(e){
+        $("#createMsg").innerHTML = `<span class="err">${e.message||e}</span>`;
+      }
+    };
+
+    $("#btnUpdate").onclick = async ()=>{
+      $("#updateMsg").textContent = "กำลังอัปเดต...";
+      try{
+        const js = await callAuthed(TRK_UPDATE_URL, {
+          serial: $("#serial").value.trim(),
+          code: $("#code").value,
+          text: $("#text").value.trim() || undefined,
+          level: Number($("#level").value)||1
+        });
+        $("#updateMsg").innerHTML = `<span class="ok">อัปเดตสำเร็จ</span>`;
+      }catch(e){
+        $("#updateMsg").innerHTML = `<span class="err">${e.message||e}</span>`;
+      }
+    };
+
+  }catch(e){
+    $("#who").innerHTML = `<span class="err">${e.message||e}</span>`;
+  }
+});
+</script>
+</body>
+</html>
