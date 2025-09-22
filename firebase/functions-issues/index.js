@@ -108,8 +108,11 @@ exports.authLine = onRequest({ secrets: [LINE_CHANNEL_ID, LINE_CHANNEL_IDS] }, a
     if (!idToken) return endJson(res, 400, { ok:false, error:"MISSING_ID_TOKEN" });
 
     // รายการ clientIds ที่อนุญาต จาก secrets
-    const raw = (LINE_CHANNEL_IDS.value?.() || LINE_CHANNEL_ID.value?.() || "").trim();
-    const allowed = raw.split(/[,\s]+/).filter(Boolean); // ["2008118596","2008142684", ...]
+      const rawIds  = LINE_CHANNEL_IDS.value?.() || ""; // อนุญาตหลายค่าในตัวมันเอง
+      const rawId   = LINE_CHANNEL_ID.value?.()  || ""; // single
+      const clientIds = (rawIds + " " + rawId)
+  .split(/[,\s]+/)
+  .filter(Boolean); // ["2008118596","2008142684", ...]
     if (allowed.length === 0) {
       console.error("[authLine] Missing secret LINE_CHANNEL_ID(S)");
       return endJson(res, 500, { ok:false, error:"MISSING_SECRET" });
