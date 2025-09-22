@@ -106,46 +106,50 @@ const FIREBASE_CONFIG = {
 
 const $ = s => document.querySelector(s);
 
-// --------- Login guard ----------
 let liffReady = false;
 let firebaseSignedIn = false;
+
+function decodeJwt(token){
+  try { return JSON.parse(atob((token||"").split(".")[1]||"")); } catch { return null; }
+}
 
 async function ensureLiffReady() {
   if (liffReady) return;
   await liff.init({ liffId: LIFF_ID, withLoginOnExternalBrowser: true });
   if (!liff.isLoggedIn()) {
-    // login ครั้งเดียว แล้วกลับมาหน้าเดิม
     liff.login({ redirectUri: location.href });
-    await new Promise(()=>{}); // รอ redirect
+    await new Promise(()=>{});
   }
   liffReady = true;
 }
 
-// ใช้ LINE id_token เฉพาะตอน "แลก" กับ authLine เท่านั้น
-function getLineIdToken() {
-  return liff.getIDToken() || null; // ไม่บังคับตรวจ decoded/expiry
-}
-
-// แลก LINE id_token -> Firebase custom token -> sign in Firebase
 async function signInFirebaseIfNeeded() {
   if (firebaseSignedIn && firebase?.auth?.().currentUser) return;
-  const idt = getLineIdToken();
+
+  const idt = liff.getIDToken();
+  const dec = decodeJwt(idt);
   if (!idt) {
-    // ถ้าไม่มีจริง ๆ ค่อย login อีกรอบ (กรณี token หมดอายุหลังอยู่หน้านาน ๆ)
-    liff.login({ redirectUri: location.href });
-    await new Promise(()=>{});
+    // แสดงสาเหตุให้ชัด -> ไม่วน login
+    const msg = "LIFF ไม่มี id_token (ต้องเปิด scope 'openid' ที่ LIFF ของหน้า staff)";
+    console.error(msg);
+    $("#who").innerHTML = `<span class="err">${msg}</span>`;
+    throw new Error("NO_ID_TOKEN");
   }
+
+  // แลก custom token
   const r = await fetch(AUTH_URL, {
     method: "POST",
     headers: { "Content-Type":"application/json" },
-    body: JSON.stringify({ idToken: getLineIdToken() })
+    body: JSON.stringify({ idToken: idt })
   });
   const js = await r.json().catch(()=> ({}));
   if (!r.ok || !js.firebaseToken) {
-    // ถ้า 401/INVALID_LINE_ID_TOKEN ค่อยบังคับ login ใหม่ครั้งเดียว
-    if (r.status === 401) { liff.login({ redirectUri: location.href }); await new Promise(()=>{}); }
-    throw new Error(js?.error || "authLine failed");
+    // ถ้าตอบ 401 พร้อม detail เช่น AUD_NOT_ALLOWED จะเห็นใน console
+    console.error("authLine failed", js);
+    $("#who").innerHTML = `<span class="err">authLine ล้มเหลว: ${js?.error||r.status}</span>`;
+    throw new Error(js?.error || "AUTHLINE_FAILED");
   }
+
   if (!firebase.apps?.length) firebase.initializeApp(FIREBASE_CONFIG);
   await firebase.auth().signInWithCustomToken(js.firebaseToken);
   firebaseSignedIn = true;
@@ -153,47 +157,30 @@ async function signInFirebaseIfNeeded() {
 
 async function getFirebaseIdToken() {
   await signInFirebaseIfNeeded();
-  // ไม่บังคับรีเฟรชทุกครั้ง เพื่อลดโอกาสชน re-auth
-  return await firebase.auth().currentUser.getIdToken(/*forceRefresh=*/false);
+  return await firebase.auth().currentUser.getIdToken(false); // ไม่ force refresh เพื่อลดโอกาสเด้ง
 }
 
 async function callAuthed(url, body) {
   await ensureLiffReady();
-  try {
-    const fbId = await getFirebaseIdToken();
-    const r = await fetch(url, {
-      method:"POST",
-      headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+fbId },
-      body: JSON.stringify(body || {})
-    });
-    const js = await r.json().catch(()=> ({}));
-    if (!r.ok || !js.ok) throw new Error(js?.error || ("HTTP_"+r.status));
-    return js;
-  } catch (e) {
-    // Fallback: ถ้า token ฝั่งใดฝั่งหนึ่งหมดอายุระหว่างทาง ให้ลอง login ใหม่ 1 ครั้ง
-    if (String(e).includes("UNAUTHENTICATED") || String(e).includes("INVALID_LINE_ID_TOKEN")) {
-      liff.login({ redirectUri: location.href });
-      await new Promise(()=>{});
-    }
-    throw e;
-  }
+  const fbId = await getFirebaseIdToken();   // ถ้าตรงนี้ fail จะโชว์ข้อความแล้ว ไม่วน login
+  const r = await fetch(url, {
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+fbId },
+    body: JSON.stringify(body || {})
+  });
+  const js = await r.json().catch(()=> ({}));
+  if (!r.ok || !js.ok) throw new Error(js?.error || ("HTTP_"+r.status));
+  return js;
 }
 
-// --------- Page init ----------
 window.addEventListener("DOMContentLoaded", async ()=>{
   try {
     await ensureLiffReady();
 
-    // แสดงโปรไฟล์ได้เพราะ login แล้ว
     const prof = await liff.getProfile().catch(()=>null);
-    if (prof) {
-      $("#who").textContent = `เข้าสู่ระบบ: ${prof.displayName} (${prof.userId})`;
-    } else {
-      $("#who").textContent = `เข้าสู่ระบบสำเร็จ`;
-    }
-    $("#btnLogout").onclick = ()=>{ liff.logout(); location.reload(); };
+    $("#who").textContent = prof ? `เข้าสู่ระบบ: ${prof.displayName} (${prof.userId})` : "เข้าสู่ระบบแล้ว";
+    $("#btnLogout").onclick = ()=>{ liff.logout(); location.replace(location.origin + location.pathname); };
 
-    // Create
     $("#btnCreate").onclick = async ()=>{
       $("#createMsg").textContent = "กำลังสร้าง...";
       $("#created").style.display = "none";
@@ -215,7 +202,6 @@ window.addEventListener("DOMContentLoaded", async ()=>{
       }
     };
 
-    // Update
     $("#btnUpdate").onclick = async ()=>{
       $("#updateMsg").textContent = "กำลังอัปเดต...";
       try {
