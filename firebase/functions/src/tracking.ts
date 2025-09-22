@@ -1,34 +1,60 @@
 import { onRequest } from "firebase-functions/v2/https";
-import { setGlobalOptions } from "firebase-functions/v2";
 import { defineSecret } from "firebase-functions/params";
 import crypto from "crypto";
 
-// ===== Admin SDK (ESM modular) =====
+/* ===== Admin SDK v12 (ESM modular) ===== */
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 
+/* ===== Init app (modular only) ===== */
 if (!getApps().length) initializeApp();
+const auth = getAuth();
+const db = getFirestore();
 
-// ===== CORS & helpers =====
+/* ===== CORS & helpers ===== */
 const ALLOW_ORIGINS = new Set([
   "https://liff-test-finh.vercel.app",
   "https://liff-test-finh-n8ql.vercel.app",
   "https://liff-test-finh-tracking.vercel.app",
-  "/^https:\/\/liff-test-finh-[a-z0-9-]+\.vercel\.app$/i",
-  "/^https:\/\/liff-test-finh-tracking-[a-z0-9-]+\.vercel\.app$/i"
 ]);
+
+const ORIGIN_REGEX = [
+  /^https:\/\/liff-test-finh-[a-z0-9-]+\.vercel\.app$/i,
+  /^https:\/\/liff-test-finh-tracking-[a-z0-9-]+\.vercel\.app$/i,
+];
+
+function isAllowedOrigin(origin?: string): boolean {
+  return !!origin && (ALLOW_ORIGINS.has(origin) || ORIGIN_REGEX.some((r) => r.test(origin)));
+}
 
 function setCors(req: any, res: any): void {
   const origin = req.header("Origin");
   res.set("Vary", "Origin");
-  if (origin && ALLOW_ORIGINS.has(origin)) {
-    res.set("Access-Control-Allow-Origin", origin);
+  if (isAllowedOrigin(origin)) {
+    res.set("Access-Control-Allow-Origin", origin!);
     res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.set("Access-Control-Allow-Headers", req.header("Access-Control-Request-Headers") || "Content-Type, Authorization");
     res.set("Access-Control-Max-Age", "3600");
   }
 }
+
+async function linePush(token: string, to: string, messages: any) {
+  const r = await fetch("https://api.line.me/v2/bot/message/push", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+    body: JSON.stringify({ to, messages: Array.isArray(messages) ? messages : [messages] })
+  });
+  const bodyText = await r.text().catch(() => "");
+  const log = { tag: "line.push", ok: r.ok, status: r.status, to, bodyPreview: bodyText.slice(0, 500) };
+  if (r.ok) console.log(log); else console.error(log);
+  return { ok: r.ok, status: r.status, body: bodyText };
+}
+
+
+/* ===== Timestamp helpers ===== */
+const serverTs = () => FieldValue.serverTimestamp(); // ใช้กับ field top-level
+const tsNow = () => Timestamp.now();                 // ใช้ใน arrayUnion
 
 function endJson(res: any, code: number, obj: any): void {
   res.set("Content-Type", "application/json; charset=utf-8");
@@ -42,16 +68,13 @@ function jsonBody(req: any) {
 
 async function verifyFirebaseIdTokenFromHeader(req: any, res: any) {
   const m = (req.header("Authorization") || "").match(/^Bearer\s+(.+)$/i);
-  if (!m) { endJson(res, 401, { ok:false, error:"UNAUTHENTICATED" }); return null; }
-  try { return await getAuth().verifyIdToken(m[1]); }
-  catch { endJson(res, 401, { ok:false, error:"UNAUTHENTICATED" }); return null; }
+  if (!m) { endJson(res, 401, { ok: false, error: "UNAUTHENTICATED" }); return null; }
+  try { return await auth.verifyIdToken(m[1]); }
+  catch { endJson(res, 401, { ok: false, error: "UNAUTHENTICATED" }); return null; }
 }
 
-// ===== Tracking core =====
-const db = getFirestore();
+/* ===== Tracking core ===== */
 const TRACK_STATES = new Set(["CREATED", "RECEIVED", "IN_PROGRESS", "QA", "COMPLETED", "ON_HOLD", "CANCELLED", "FAILED"]);
-const nowTs = () => FieldValue.serverTimestamp();
-
 function makeSerial(prefix = "WX") {
   const d = new Date();
   const y = String(d.getFullYear()).slice(-2);
@@ -60,9 +83,8 @@ function makeSerial(prefix = "WX") {
   const rand = Math.floor(Math.random() * Math.pow(36, 5)).toString(36).toUpperCase().padStart(5, "0");
   return `${prefix}-${y}${m}${day}-${rand}`;
 }
-
 const normalizeLevel = (lv: any) => Math.max(0, Math.min(4, Number.isFinite(+lv) ? Math.round(+lv) : 1));
-const sanitizeTitle  = (s: any) => (!s || typeof s !== "string") ? "Tracking" : s.slice(0, 140);
+const sanitizeTitle = (s: any) => (!s || typeof s !== "string") ? "Tracking" : s.slice(0, 140);
 
 async function getTrackingDoc(serial: string) {
   if (!serial) return null;
@@ -72,10 +94,17 @@ async function getTrackingDoc(serial: string) {
 }
 
 /* === 1) สร้างเลขติดตาม === */
-export const trkCreate = onRequest({ region: "asia-southeast1" },async (req, res): Promise<void> => {
+export const trkCreate = onRequest({
+  region: "asia-southeast1",
+  memory: "256MiB",
+  timeoutSeconds: 60,
+  maxInstances: 1,
+  minInstances: 0,
+  concurrency: 80
+}, async (req, res): Promise<void> => {
   setCors(req, res);
   if (req.method === "OPTIONS") { res.status(204).end(); return; }
-  if (req.method !== "POST") { endJson(res, 405, { ok:false, error:"METHOD_NOT_ALLOWED" }); return; }
+  if (req.method !== "POST") { endJson(res, 405, { ok: false, error: "METHOD_NOT_ALLOWED" }); return; }
 
   const decoded = await verifyFirebaseIdTokenFromHeader(req, res);
   if (!decoded) return;
@@ -84,13 +113,15 @@ export const trkCreate = onRequest({ region: "asia-southeast1" },async (req, res
     const b = jsonBody(req);
     const serial = makeSerial("WX");
     const firstState = TRACK_STATES.has(b.firstState) ? b.firstState : "CREATED";
+
     const entry = {
       code: firstState,
       text: b.firstText || (firstState === "CREATED" ? "สร้างคำขอแล้ว" : firstState),
-      at: nowTs(),
+      at: tsNow(),
       by: (decoded as any).uid || null,
-      note: b.firstNote ?? null
+      note: b.firstNote ?? null,
     };
+
     const doc = {
       serial,
       issueId: b.issueId ?? null,
@@ -101,66 +132,99 @@ export const trkCreate = onRequest({ region: "asia-southeast1" },async (req, res
       statusText: entry.text,
       statusLevel: normalizeLevel(b.firstLevel ?? 1),
       statusHistory: [entry],
-      createdAt: nowTs(),
-      updatedAt: nowTs(),
+      createdAt: serverTs(),
+      updatedAt: serverTs(),
       ownerUid: (decoded as any).uid || null,
-      public: true
+      public: true,
     };
+
     await db.collection("tracking").doc(serial).set(doc);
-    endJson(res, 200, { ok:true, serial });
+    endJson(res, 200, { ok: true, serial });
   } catch (e: any) {
-    console.error("[trkCreate] error", e);
-    endJson(res, 500, { ok:false, error:"INTERNAL_ERROR", message: e?.message || String(e) });
+    const err = { name: e?.name || null, code: e?.code || null, message: e?.message || String(e), stack: e?.stack || null };
+    console.error("[trkCreate] error", err);
+    const DEBUG_ERRORS = true;
+    endJson(res, 500, { ok: false, error: "INTERNAL_ERROR", message: err.message, code: err.code, ...(DEBUG_ERRORS ? { stack: err.stack } : {}) });
   }
 });
 
 /* === 2) อัปเดตสถานะ === */
-export const trkUpdate = onRequest({ region: "asia-southeast1" },async (req, res): Promise<void> => {
+export const trkUpdate = onRequest({
+  region: "asia-southeast1",
+  memory: "256MiB",
+  timeoutSeconds: 60,
+  maxInstances: 1,
+  minInstances: 0,
+  concurrency: 80
+}, async (req, res): Promise<void> => {
   setCors(req, res);
   if (req.method === "OPTIONS") { res.status(204).end(); return; }
-  if (req.method !== "POST") { endJson(res, 405, { ok:false, error:"METHOD_NOT_ALLOWED" }); return; }
+  if (req.method !== "POST") { endJson(res, 405, { ok: false, error: "METHOD_NOT_ALLOWED" }); return; }
 
   const decoded = await verifyFirebaseIdTokenFromHeader(req, res);
   if (!decoded) return;
 
   try {
     const b = jsonBody(req);
-    if (!b.serial) { endJson(res, 400, { ok:false, error:"MISSING_SERIAL" }); return; }
-    if (!TRACK_STATES.has(b.code)) { endJson(res, 400, { ok:false, error:"INVALID_STATE" }); return; }
 
-    const doc = await getTrackingDoc(b.serial);
-    if (!doc) { endJson(res, 404, { ok:false, error:"NOT_FOUND" }); return; }
+    const serial = String(b.serial || "").trim().toUpperCase();
+    if (!serial) { endJson(res, 400, { ok: false, error: "MISSING_SERIAL" }); return; }
 
-    const entry = { code: b.code, text: b.text || b.code, at: nowTs(), by: (decoded as any).uid || null, note: b.note ?? null };
+    const code = String(b.code || "");
+    if (!TRACK_STATES.has(code)) { endJson(res, 400, { ok: false, error: "INVALID_STATE" }); return; }
+
+    const doc = await getTrackingDoc(serial);
+    if (!doc) { endJson(res, 404, { ok: false, error: "NOT_FOUND" }); return; }
+
+    const currLevel = (doc.data as any)?.statusLevel ?? 1;
+    const level = normalizeLevel((b.level ?? currLevel));
+
+    const entry = {
+      code,
+      text: (b.text || code),
+      at: tsNow(),
+      by: (decoded as any).uid || null,
+      note: b.note ?? null,
+    };
+
     await doc.ref.update({
-      state: b.code,
+      state: code,
       statusText: entry.text,
-      statusLevel: normalizeLevel(b.level ?? (doc.data as any).statusLevel ?? 1),
+      statusLevel: level,
       statusHistory: FieldValue.arrayUnion(entry),
-      updatedAt: nowTs()
+      updatedAt: serverTs(),
     });
 
-    endJson(res, 200, { ok:true });
+    endJson(res, 200, { ok: true });
   } catch (e: any) {
-    console.error("[trkUpdate] error", e);
-    endJson(res, 500, { ok:false, error:"INTERNAL_ERROR", message: e?.message || String(e) });
+    const err = { name: e?.name || null, code: e?.code || null, message: e?.message || String(e), stack: e?.stack || null };
+    console.error("[trkUpdate] error", err);
+    const DEBUG_ERRORS = true;
+    endJson(res, 500, { ok: false, error: "INTERNAL_ERROR", message: err.message, code: err.code, ...(DEBUG_ERRORS ? { stack: err.stack } : {}) });
   }
 });
 
 /* === 3) อ่านสถานะ (สาธารณะ) === */
-export const trkGet = onRequest({ region: "asia-southeast1" },async (req, res): Promise<void> => {
+export const trkGet = onRequest({
+  region: "asia-southeast1",
+  memory: "256MiB",
+  timeoutSeconds: 30,
+  maxInstances: 1,
+  minInstances: 0,
+  concurrency: 80
+}, async (req, res): Promise<void> => {
   setCors(req, res);
   if (req.method === "OPTIONS") { res.status(204).end(); return; }
-  if (req.method !== "GET") { endJson(res, 405, { ok:false, error:"METHOD_NOT_ALLOWED" }); return; }
+  if (req.method !== "GET") { endJson(res, 405, { ok: false, error: "METHOD_NOT_ALLOWED" }); return; }
 
   try {
     const serial = String(req.query.serial || "").trim();
-    if (!serial) { endJson(res, 400, { ok:false, error:"MISSING_SERIAL" }); return; }
+    if (!serial) { endJson(res, 400, { ok: false, error: "MISSING_SERIAL" }); return; }
 
     const doc = await getTrackingDoc(serial);
-    if (!doc) { endJson(res, 404, { ok:false, error:"NOT_FOUND" }); return; }
+    if (!doc) { endJson(res, 404, { ok: false, error: "NOT_FOUND" }); return; }
     const d: any = doc.data;
-    if (d.public !== true) { endJson(res, 403, { ok:false, error:"FORBIDDEN" }); return; }
+    if (d.public !== true) { endJson(res, 403, { ok: false, error: "FORBIDDEN" }); return; }
 
     const out = {
       serial: d.serial,
@@ -175,10 +239,10 @@ export const trkGet = onRequest({ region: "asia-southeast1" },async (req, res): 
       })),
       updatedAt: d.updatedAt ?? null
     };
-    endJson(res, 200, { ok:true, tracking: out });
+    endJson(res, 200, { ok: true, tracking: out });
   } catch (e: any) {
     console.error("[trkGet] error", e);
-    endJson(res, 500, { ok:false, error:"INTERNAL_ERROR", message: e?.message || String(e) });
+    endJson(res, 500, { ok: false, error: "INTERNAL_ERROR", message: e?.message || String(e) });
   }
 });
 
@@ -191,49 +255,129 @@ function verifyLineSignature(req: any, secret: string) {
   const sig = crypto.createHmac("sha256", secret).update(raw).digest("base64");
   return sig === (req.header("X-Line-Signature") || "");
 }
-
 async function lineReply(token: string, replyToken: string, messages: any) {
-  await fetch("https://api.line.me/v2/bot/message/reply", {
+  const r = await fetch("https://api.line.me/v2/bot/message/reply", {
     method: "POST",
-    headers: { "Content-Type":"application/json", "Authorization":"Bearer "+token },
-    body: JSON.stringify({ replyToken, messages: Array.isArray(messages)? messages : [messages] })
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+    body: JSON.stringify({ replyToken, messages: Array.isArray(messages) ? messages : [messages] })
   });
+
+  const bodyText = await r.text().catch(() => "");
+  const log = {
+    tag: "line.reply",
+    ok: r.ok,
+    status: r.status,
+    replyTokenLen: (replyToken || "").length,
+    bodyPreview: bodyText.slice(0, 500),
+    service: process.env.K_SERVICE,
+    revision: process.env.K_REVISION,
+  };
+
+  if (r.ok) console.log(log);
+  else console.error(log);
+
+  return { ok: r.ok, status: r.status, body: bodyText };
 }
 
+/* ===== Flex helpers ===== */
+const LIFF_TRACK_URL = "https://liff-test-finh-tracking.vercel.app/";
+function toDateMaybe(x: any): Date | null {
+  if (!x) return null;
+  if (typeof x?.toDate === "function") return x.toDate();
+  if (x?._seconds) return new Date(x._seconds * 1000);
+  if (typeof x === "number" || typeof x === "string") return new Date(x);
+  return null;
+}
+function fmtTh(d: Date | null): string {
+  if (!d) return "-";
+  return new Intl.DateTimeFormat("th-TH", {
+    timeZone: "Asia/Bangkok",
+    day: "2-digit", month: "short",
+    hour: "2-digit", minute: "2-digit",
+  }).format(d);
+}
 function buildFlex(tracking: any) {
-  const colors = ["#9CA3AF","#3B82F6","#F59E0B","#EF4444","#10B981"];
-  const color = colors[Math.max(0, Math.min(4, tracking.statusLevel || 1))];
-  const items = (tracking.statusHistory || []).slice(-5).reverse().map((h: any) => ({
-    type:"box", layout:"baseline", spacing:"sm",
-    contents:[
-      { type:"text", text:h.code, size:"sm", weight:"bold" },
-      { type:"text", text:h.text, size:"sm", wrap:true, color:"#6B7280" }
-    ]
-  }));
+  const stateColors: Record<string, string> = {
+    CREATED: "#6B7280", RECEIVED: "#3B82F6", IN_PROGRESS: "#F59E0B",
+    QA: "#8B5CF6", COMPLETED: "#10B981", ON_HOLD: "#9CA3AF",
+    CANCELLED: "#EF4444", FAILED: "#EF4444",
+  };
+  const levelColors = ["#9CA3AF", "#3B82F6", "#F59E0B", "#EF4444", "#10B981"];
+  const level = Math.max(0, Math.min(4, Number(tracking.statusLevel ?? 1)));
+  const state = String(tracking.state || "CREATED").toUpperCase();
+  const color = stateColors[state] || levelColors[level];
+
+  const hist = Array.isArray(tracking.statusHistory) ? tracking.statusHistory.slice(-5).reverse() : [];
+  const items = hist.length
+    ? hist.map((h: any) => ({
+        type: "box", layout: "vertical", spacing: "xs",
+        contents: [
+          { type: "text", text: h.code || "-", size: "sm", weight: "bold" },
+          { type: "text", text: h.text || "-", size: "sm", wrap: true, color: "#6B7280" },
+          { type: "text", text: fmtTh(toDateMaybe(h.at ?? null)), size: "xs", color: "#9CA3AF" }
+        ]
+      }))
+    : [{ type: "text", text: "ยังไม่มีไทม์ไลน์", size: "sm", color: "#9CA3AF" }];
+
+const levelDots = Array.from({ length: 5 }).map((_, i) => ({
+  type: "box",
+  layout: "vertical",
+  contents: [],                 // ← สำคัญ! Flex box ต้องมี contents เสมอ
+  width: "10px",
+  height: "10px",
+  cornerRadius: "10px",
+  backgroundColor: i <= level ? color : "#E5E7EB",
+}));
+
   return {
-    type:"flex",
-    altText:`สถานะ ${tracking.serial}: ${tracking.state}`,
-    contents:{
-      type:"bubble",
-      header:{ type:"box", layout:"vertical", contents:[
-        { type:"text", text:"Tracking", size:"sm", color:"#6B7280" },
-        { type:"text", text:tracking.serial, weight:"bold", size:"lg" },
-        { type:"text", text:tracking.title||"-", size:"sm", color:"#6B7280", wrap:true }
-      ]},
-      body:{ type:"box", layout:"vertical", spacing:"md", contents:[
-        { type:"box", layout:"vertical", contents:[
-          { type:"text", text:`สถานะ: ${tracking.state}`, weight:"bold", size:"md", color }
+    type: "flex",
+    altText: `สถานะ ${tracking.serial}: ${state}`,
+    contents: {
+      type: "bubble",
+      header: {
+        type: "box", layout: "vertical", paddingAll: "12px", backgroundColor: "#FFFFFF",
+        contents: [
+          { type: "text", text: "Tracking", size: "xs", color: "#6B7280" },
+          { type: "text", text: tracking.serial || "-", weight: "bold", size: "lg" },
+          { type: "text", text: tracking.title || "-", size: "sm", color: "#6B7280", wrap: true },
+        ],
+      },
+      body: {
+        type: "box", layout: "vertical", spacing: "md",
+        contents: [
+          { type: "box", layout: "baseline", contents: [
+              { type: "text", text: "สถานะ", size: "sm", color: "#6B7280" },
+              { type: "text", text: state, size: "md", weight: "bold", color },
+            ] },
+          { type: "box", layout: "horizontal", spacing: "xs", contents: levelDots },
+          { type: "separator" },
+          { type: "box", layout: "vertical", spacing: "sm", contents: items }
+        ]
+      },
+      footer: {
+        type: "box", layout: "horizontal", contents: [
+          { type: "button", style: "primary",
+            action: { type: "uri", label: "เปิดใน LIFF", uri: `${LIFF_TRACK_URL}?serial=${encodeURIComponent(tracking.serial)}` },
+            color }
         ]},
-        { type:"separator" },
-        { type:"box", layout:"vertical", spacing:"sm",
-          contents: items.length? items : [{ type:"text", text:"ยังไม่มีไทม์ไลน์", size:"sm", color:"#9CA3AF" }] }
-      ]},
-      styles:{ header:{ separator:true } }
+      styles: { header: { separator: true } }
+    },
+    quickReply: {
+      items: [{ type: "action", action: { type: "message", label: "ดูเลขอื่น", text: "พิมพ์เลขติดตาม เช่น WX-250922-ABCDE" } }]
     }
   };
 }
 
-export const lineWebhookTracking = onRequest({ region: "asia-southeast1", secrets:[LINE_CHANNEL_SECRET, LINE_CHANNEL_ACCESS_TOKEN] }, async (req, res): Promise<void> => {
+/* === Webhook === */
+export const lineWebhookTracking = onRequest({
+  region: "asia-southeast1",
+  memory: "256MiB",
+  timeoutSeconds: 15,
+  maxInstances: 1,
+  minInstances: 0,
+  concurrency: 40,
+  secrets: [LINE_CHANNEL_SECRET, LINE_CHANNEL_ACCESS_TOKEN]
+}, async (req, res): Promise<void> => {
   if (req.method !== "POST") { res.status(405).send("Method Not Allowed"); return; }
   if (!verifyLineSignature(req, LINE_CHANNEL_SECRET.value())) { res.status(401).send("Bad signature"); return; }
 
@@ -244,29 +388,60 @@ export const lineWebhookTracking = onRequest({ region: "asia-southeast1", secret
     try {
       if (ev.type !== "message" || ev.message?.type !== "text") continue;
 
-      const txt = (ev.message.text || "").trim();
-      const m = txt.match(/[A-Z]{2}-\d{6}-[A-Z0-9]{5}/i);
+      // อนุโลมช่องว่าง + แปลงเป็นตัวใหญ่
+      const raw = (ev.message.text || "");
+      const txt = raw.replace(/\s+/g, "").toUpperCase();
+      const m = txt.match(/[A-Z]{2}-\d{6}-[A-Z0-9]{5}/);
+      console.log({ tag: "incoming.text", raw, normalized: txt, userId: ev.source?.userId || null });
+
       if (!m) {
-        await lineReply(LINE_CHANNEL_ACCESS_TOKEN.value(), ev.replyToken, { type:"text", text:"พิมพ์เลขติดตาม เช่น WX-250919-7F4K2" });
+        await lineReply(LINE_CHANNEL_ACCESS_TOKEN.value(), ev.replyToken, {
+          type: "text",
+          text: "พิมพ์เลขติดตาม เช่น WX-250919-7F4K2"
+        });
         continue;
       }
 
-      const serial = m[0].toUpperCase();
+      const serial = m[0];
       const doc = await getTrackingDoc(serial);
+
       if (!doc || (doc.data as any).public !== true) {
-        await lineReply(LINE_CHANNEL_ACCESS_TOKEN.value(), ev.replyToken, { type:"text", text:`ไม่พบเลขติดตาม ${serial}` });
+        await lineReply(LINE_CHANNEL_ACCESS_TOKEN.value(), ev.replyToken, {
+          type: "text",
+          text: `ไม่พบเลขติดตาม ${serial}`,
+          quickReply: {
+            items: [{ type: "action", action: { type: "message", label: "วิธีพิมพ์เลข", text: "พิมพ์เลขติดตาม เช่น WX-YYMMDD-ABCDE" } }]
+          }
+        });
         continue;
       }
 
       const t: any = doc.data;
-      const tracking = { serial:t.serial, title:t.title, state:t.state, statusText:t.statusText, statusLevel:t.statusLevel, statusHistory:t.statusHistory||[] };
-      await lineReply(LINE_CHANNEL_ACCESS_TOKEN.value(), ev.replyToken, buildFlex(tracking));
+      const tracking = {
+        serial: t.serial,
+        title: t.title,
+        state: t.state,
+        statusText: t.statusText,
+        statusLevel: t.statusLevel,
+        statusHistory: t.statusHistory || []
+      };
+
+      // ส่ง Flex
+      const rep = await lineReply(LINE_CHANNEL_ACCESS_TOKEN.value(), ev.replyToken, buildFlex(tracking));
+
+      if (!rep.ok && ev.source?.userId) {
+        await linePush(LINE_CHANNEL_ACCESS_TOKEN.value(), ev.source.userId, {
+          type: "text",
+          text: `เลข ${tracking.serial}\nสถานะ: ${tracking.state}\nข้อความ: ${tracking.statusText || "-"}`
+        });
+      }
     } catch (e) {
       console.error("[lineWebhookTracking] event error", e);
-      try { await lineReply(LINE_CHANNEL_ACCESS_TOKEN.value(), ev.replyToken, { type:"text", text:"เกิดข้อผิดพลาด กรุณาลองใหม่" }); } catch {}
-    }   
+      try {
+        await lineReply(LINE_CHANNEL_ACCESS_TOKEN.value(), ev.replyToken, { type: "text", text: "เกิดข้อผิดพลาด กรุณาลองใหม่" });
+      } catch {}
+    }
   }
 
   res.status(200).send("OK");
-  return;
 });

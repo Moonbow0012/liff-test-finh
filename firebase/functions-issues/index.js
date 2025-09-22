@@ -87,6 +87,19 @@ function sanitizeAuditAnswers(arr) {
 const LINE_CHANNEL_ID  = defineSecret("LINE_CHANNEL_ID");   // เดิม: single
 const LINE_CHANNEL_IDS = defineSecret("LINE_CHANNEL_IDS");  // ใหม่: หลายค่า (comma/space แยก)
 
+function getAllowedClientIds() {
+  const combo = (LINE_CHANNEL_IDS.value?.() || "") + " " + (LINE_CHANNEL_ID.value?.() || "");
+  return combo.split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
+}
+
+// decode JWT เฉพาะเพื่ออ่าน aud (ไม่ใช่การ verify)
+function decodeJwtNoVerify(token) {
+  try {
+    const [, payload] = String(token||"").split(".");
+    return JSON.parse(Buffer.from(payload || "", "base64").toString("utf8"));
+  } catch { return {}; }
+}
+
 // helper: decode JWT payload เพื่อดึง aud (Channel ID) มาดู
 function decodeJwtNoVerify(token) {
   try {
@@ -103,75 +116,108 @@ exports.authLine = onRequest({ secrets: [LINE_CHANNEL_ID, LINE_CHANNEL_IDS] }, a
   if (req.method !== "POST")   return endJson(res, 405, { ok:false, error:"METHOD_NOT_ALLOWED" });
 
   try {
-    const body = jsonBody(req);
-    const idToken = body.idToken;
-    if (!idToken) return endJson(res, 400, { ok:false, error:"MISSING_ID_TOKEN" });
-
-    // รายการ clientIds ที่อนุญาต จาก secrets
-      const rawIds  = LINE_CHANNEL_IDS.value?.() || ""; // อนุญาตหลายค่าในตัวมันเอง
-      const rawId   = LINE_CHANNEL_ID.value?.()  || ""; // single
-      const clientIds = (rawIds + " " + rawId)
-  .split(/[,\s]+/)
-  .filter(Boolean); // ["2008118596","2008142684", ...]
-    if (allowed.length === 0) {
-      console.error("[authLine] Missing secret LINE_CHANNEL_ID(S)");
-      return endJson(res, 500, { ok:false, error:"MISSING_SECRET" });
+    const { idToken, accessToken } = jsonBody(req);
+    if (!idToken && !accessToken) {
+      return endJson(res, 400, { ok:false, error:"MISSING_TOKEN", message:"need idToken or accessToken" });
     }
 
-    // อ่าน aud จาก id_token (เลข Channel ID ที่ token ผูกมา)
-    const decoded = decodeJwtNoVerify(idToken);
-    const aud = decoded?.aud ? String(decoded.aud) : null;
-
-    // ถ้า aud มี และไม่อยู่ใน allowed → ปัดตกชัดเจน จะได้รู้ว่าใส่ secret ผิด
-    if (aud && !allowed.includes(aud)) {
-      console.error("[authLine] AUD_NOT_ALLOWED", { aud, allowed });
-      return endJson(res, 401, { ok:false, error:"AUD_NOT_ALLOWED", aud, message:"This id_token belongs to a different Channel ID (aud) than your allowed list." });
+    const allowed = getAllowedClientIds();               // ✅ มีเสมอ
+    if (!allowed.length) {
+      return endJson(res, 500, { ok:false, error:"MISSING_SECRET", message:"No Channel IDs in LINE_CHANNEL_IDS/LINE_CHANNEL_ID" });
     }
 
-    // สร้าง candidate รายการที่จะลอง verify (ให้ลอง aud ก่อน เพื่อผ่านชัวร์)
-    const candidates = [];
-    if (aud && allowed.includes(aud)) candidates.push(aud);
-    // ตามด้วยรายการ allowed อื่น ๆ ที่ยังไม่ได้ลอง
-    for (const cid of allowed) if (!candidates.includes(cid)) candidates.push(cid);
+    let sub = null, profile = {}, usedClientId = null, aud = null, lastDetail = null, lastStatus = 0;
 
-    // 1) Verify กับ LINE: ไล่ทีละ client_id
-    let verified = null, lastDetail = null, lastStatus = 0, usedCid = null;
-    for (const cid of candidates) {
-      try {
-        const resp = await fetch("https://api.line.me/oauth2/v2.1/verify", {
-          method: "POST",
-          headers: { "Content-Type":"application/x-www-form-urlencoded" },
-          body: new URLSearchParams({ id_token: idToken, client_id: cid }).toString(),
-        });
-        lastStatus = resp.status;
-        const js = await resp.json().catch(()=> ({}));
-        if (resp.ok && js?.sub) { verified = js; usedCid = cid; break; }
-        lastDetail = js;
-      } catch (e) {
-        lastDetail = { error: String(e?.message || e) };
+    // ---- Path A: verify id_token ด้วย client_id ที่อนุญาต
+    if (idToken) {
+      aud = String(decodeJwtNoVerify(idToken)?.aud || "");
+      const candidates = (aud && allowed.includes(aud))
+        ? [aud, ...allowed.filter(x => x !== aud)]
+        : [...allowed];
+
+      for (const cid of candidates) {
+        try {
+          const resp = await fetch("https://api.line.me/oauth2/v2.1/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ id_token: idToken, client_id: cid }).toString(),
+          });
+          lastStatus = resp.status;
+          const js = await resp.json().catch(()=> ({}));
+          if (resp.ok && js?.sub) {
+            sub = js.sub;
+            profile = { name: js.name || null, picture: js.picture || null, email: js.email || null };
+            usedClientId = cid;
+            break;
+          }
+          lastDetail = js;
+        } catch (e) {
+          lastDetail = { error: String(e?.message || e) };
+        }
+      }
+
+      // id_token ผูกกับ channel อื่นที่เราไม่ได้อนุญาต
+      if (!sub && aud && !allowed.includes(aud)) {
+        return endJson(res, 401, { ok:false, error:"AUD_NOT_ALLOWED", aud, allowed });
       }
     }
-    if (!verified) {
-      console.error("[authLine] LINE verify failed", { lastStatus, lastDetail, aud, candidates });
-      return endJson(res, 401, { ok:false, error:"INVALID_LINE_ID_TOKEN", status:lastStatus, detail:lastDetail, aud, tried:candidates });
+
+    // ---- Path B: fallback ด้วย access_token → verify + userinfo
+    if (!sub && accessToken) {
+      try {
+        // 1) ตรวจ client_id จาก access token
+        const vr = await fetch(`https://api.line.me/oauth2/v2.1/verify?access_token=${encodeURIComponent(accessToken)}`);
+        const vj = await vr.json().catch(()=> ({}));
+        if (!vr.ok || !vj?.client_id) {
+          return endJson(res, 401, { ok:false, error:"ACCESS_TOKEN_VERIFY_FAILED", detail: vj });
+        }
+        if (!allowed.includes(String(vj.client_id))) {
+          return endJson(res, 401, { ok:false, error:"CLIENT_ID_NOT_ALLOWED", client_id: vj.client_id, allowed });
+        }
+        usedClientId = String(vj.client_id);
+
+        // 2) ดึง userinfo เพื่อหา sub
+        const ur = await fetch("https://api.line.me/oauth2/v2.1/userinfo", {
+          headers: { "Authorization": "Bearer " + accessToken }
+        });
+        const uj = await ur.json().catch(()=> ({}));
+        if (!ur.ok || !uj?.sub) {
+          return endJson(res, 401, { ok:false, error:"USERINFO_FAILED", detail: uj });
+        }
+        sub = uj.sub;
+        profile = { name: uj.name || null, picture: uj.picture || null, email: uj.email || null };
+      } catch (e) {
+        return endJson(res, 502, { ok:false, error:"LINE_NETWORK_ERROR", message: String(e?.message || e) });
+      }
     }
 
-    // 2) สร้าง custom token
-    const uid = `line_${verified.sub}`;
+    // ยังยืนยันไม่ได้ทั้งสองทาง
+    if (!sub) {
+      return endJson(res, 401, {
+        ok:false,
+        error:"INVALID_LINE_ID_TOKEN",
+        status:lastStatus,
+        detail:lastDetail,
+        aud,
+        tried: allowed,           // ✅ allowed อยู่ในสโคปนี้แล้ว
+      });
+    }
+
+    // ---- ออก Firebase custom token
+    const uid = `line_${sub}`;
     try {
       const customToken = await admin.auth().createCustomToken(uid, {
-        name: verified.name || null,
-        picture: verified.picture || null,
-        email: verified.email || null,
+        name: profile.name,
+        picture: profile.picture,
+        email: profile.email,
         provider: "line",
       });
-      console.log("[authLine] verified with client_id", usedCid);
+      console.log("[authLine] verified via", usedClientId ? `client_id:${usedClientId}` : "userinfo");
       return endJson(res, 200, { ok:true, firebaseToken: customToken });
     } catch (e) {
       console.error("[authLine] createCustomToken error", e);
       return endJson(res, 500, { ok:false, error:"CUSTOM_TOKEN_SIGN_ERROR", message: e?.message || String(e) });
     }
-
   } catch (e) {
     console.error("[authLine] INTERNAL_ERROR", e);
     return endJson(res, 500, { ok:false, error:"INTERNAL_ERROR", message: e?.message || String(e) });
