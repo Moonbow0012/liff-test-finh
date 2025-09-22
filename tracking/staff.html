@@ -106,6 +106,51 @@ const FIREBASE_CONFIG = {
 
 const $ = s => document.querySelector(s);
 
+let liffReady = false;
+let firebaseSignedIn = false;
+
+async function ensureLiffReady() {
+  if (liffReady) return;
+  await liff.init({ liffId: LIFF_ID, withLoginOnExternalBrowser: true });
+  if (!liff.isLoggedIn()) {
+    // login ครั้งเดียว แล้วกลับมาหน้าเดิม
+    liff.login({ redirectUri: location.href });
+    await new Promise(()=>{}); // รอ redirect
+  }
+  liffReady = true;
+}
+
+// ใช้ LINE id_token เฉพาะตอน "แลก" กับ authLine เท่านั้น
+function getLineIdToken() {
+  return liff.getIDToken() || null; // ไม่บังคับตรวจ decoded/expiry
+}
+
+// แลก LINE id_token -> Firebase custom token -> sign in Firebase
+async function signInFirebaseIfNeeded() {
+  if (firebaseSignedIn && firebase?.auth?.().currentUser) return;
+  const idt = getLineIdToken();
+  if (!idt) {
+    // ถ้าไม่มีจริง ๆ ค่อย login อีกรอบ (กรณี token หมดอายุหลังอยู่หน้านาน ๆ)
+    liff.login({ redirectUri: location.href });
+    await new Promise(()=>{});
+  }
+  const r = await fetch(AUTH_URL, {
+    method: "POST",
+    headers: { "Content-Type":"application/json" },
+    body: JSON.stringify({ idToken: getLineIdToken() })
+  });
+  const js = await r.json().catch(()=> ({}));
+  if (!r.ok || !js.firebaseToken) {
+    // ถ้า 401/INVALID_LINE_ID_TOKEN ค่อยบังคับ login ใหม่ครั้งเดียว
+    if (r.status === 401) { liff.login({ redirectUri: location.href }); await new Promise(()=>{}); }
+    throw new Error(js?.error || "authLine failed");
+  }
+  if (!firebase.apps?.length) firebase.initializeApp(FIREBASE_CONFIG);
+  await firebase.auth().signInWithCustomToken(js.firebaseToken);
+  firebaseSignedIn = true;
+}
+
+
 // ————— Helpers —————
 async function ensureLiffLogin() {
   await liff.init({ liffId: LIFF_ID, withLoginOnExternalBrowser: true });
