@@ -106,6 +106,7 @@ const FIREBASE_CONFIG = {
 
 const $ = s => document.querySelector(s);
 
+// --------- Login guard ----------
 let liffReady = false;
 let firebaseSignedIn = false;
 
@@ -150,68 +151,53 @@ async function signInFirebaseIfNeeded() {
   firebaseSignedIn = true;
 }
 
-
-// ————— Helpers —————
-async function ensureLiffLogin() {
-  await liff.init({ liffId: LIFF_ID, withLoginOnExternalBrowser: true });
-  if (!liff.isLoggedIn()) {
-    // กลับมาหน้านี้หลัง login
-    liff.login({ redirectUri: location.href });
-    // หยุด execution ไว้จน redirect กลับมา
-    await new Promise(()=>{});
-  }
-}
-
-function isIdTokenNearExpiry(decoded) {
-  const expMs = (decoded?.exp || 0) * 1000;
-  return Date.now() > expMs - 15_000; // น้อยกว่า 15 วินาทีก่อนหมดอายุ
-}
-
 async function getFirebaseIdToken() {
-  // ต้องแน่ใจก่อนว่า login แล้ว
-  await ensureLiffLogin();
+  await signInFirebaseIfNeeded();
+  // ไม่บังคับรีเฟรชทุกครั้ง เพื่อลดโอกาสชน re-auth
+  return await firebase.auth().currentUser.getIdToken(/*forceRefresh=*/false);
+}
 
-  // ถ้า id_token หาย/ใกล้หมด ให้ re-login
-  const idToken = liff.getIDToken();
-  const decoded = liff.getDecodedIDToken?.();
-  if (!idToken || !decoded || isIdTokenNearExpiry(decoded)) {
-    liff.login({ redirectUri: location.href });
-    await new Promise(()=>{});
+async function callAuthed(url, body) {
+  await ensureLiffReady();
+  try {
+    const fbId = await getFirebaseIdToken();
+    const r = await fetch(url, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+fbId },
+      body: JSON.stringify(body || {})
+    });
+    const js = await r.json().catch(()=> ({}));
+    if (!r.ok || !js.ok) throw new Error(js?.error || ("HTTP_"+r.status));
+    return js;
+  } catch (e) {
+    // Fallback: ถ้า token ฝั่งใดฝั่งหนึ่งหมดอายุระหว่างทาง ให้ลอง login ใหม่ 1 ครั้ง
+    if (String(e).includes("UNAUTHENTICATED") || String(e).includes("INVALID_LINE_ID_TOKEN")) {
+      liff.login({ redirectUri: location.href });
+      await new Promise(()=>{});
+    }
+    throw e;
   }
-
-  // แลกเป็น custom token -> sign in Firebase -> เอา Firebase ID token
-  const r = await fetch(AUTH_URL, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ idToken: liff.getIDToken() }) });
-  const js = await r.json().catch(()=> ({}));
-  if (!r.ok || !js.firebaseToken) throw new Error(js?.error || "authLine failed");
-
-  if (!firebase.apps?.length) firebase.initializeApp(FIREBASE_CONFIG);
-  await firebase.auth().signInWithCustomToken(js.firebaseToken);
-  return await firebase.auth().currentUser.getIdToken(/*forceRefresh=*/true);
 }
 
-async function callAuthed(url, body){
-  const fbId = await getFirebaseIdToken();
-  const r = await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+fbId }, body: JSON.stringify(body||{}) });
-  const js = await r.json().catch(()=> ({}));
-  if (!r.ok || !js.ok) throw new Error(js?.error || ("HTTP_"+r.status));
-  return js;
-}
-
-// ————— Page init —————
+// --------- Page init ----------
 window.addEventListener("DOMContentLoaded", async ()=>{
-  try{
-    await ensureLiffLogin();
+  try {
+    await ensureLiffReady();
 
-    // ตรงนี้เรียกได้แล้ว เพราะ login ชัวร์
-    const prof = await liff.getProfile();
-    $("#who").textContent = `เข้าสู่ระบบ: ${prof.displayName} (${prof.userId})`;
+    // แสดงโปรไฟล์ได้เพราะ login แล้ว
+    const prof = await liff.getProfile().catch(()=>null);
+    if (prof) {
+      $("#who").textContent = `เข้าสู่ระบบ: ${prof.displayName} (${prof.userId})`;
+    } else {
+      $("#who").textContent = `เข้าสู่ระบบสำเร็จ`;
+    }
     $("#btnLogout").onclick = ()=>{ liff.logout(); location.reload(); };
 
     // Create
     $("#btnCreate").onclick = async ()=>{
       $("#createMsg").textContent = "กำลังสร้าง...";
       $("#created").style.display = "none";
-      try{
+      try {
         const payload = {
           title: $("#title").value.trim() || "GAqP Tracking",
           farmId: $("#farmId").value.trim() || null,
@@ -224,7 +210,7 @@ window.addEventListener("DOMContentLoaded", async ()=>{
         $("#created").textContent = "สร้างสำเร็จ: " + js.serial;
         navigator.clipboard?.writeText(js.serial).catch(()=>{});
         $("#serial").value = js.serial;
-      }catch(e){
+      } catch (e) {
         $("#createMsg").innerHTML = `<span class="err">${e.message||e}</span>`;
       }
     };
@@ -232,7 +218,7 @@ window.addEventListener("DOMContentLoaded", async ()=>{
     // Update
     $("#btnUpdate").onclick = async ()=>{
       $("#updateMsg").textContent = "กำลังอัปเดต...";
-      try{
+      try {
         const js = await callAuthed(TRK_UPDATE_URL, {
           serial: $("#serial").value.trim(),
           code: $("#code").value,
@@ -240,12 +226,12 @@ window.addEventListener("DOMContentLoaded", async ()=>{
           level: Number($("#level").value)||1
         });
         $("#updateMsg").innerHTML = `<span class="ok">อัปเดตสำเร็จ</span>`;
-      }catch(e){
+      } catch (e) {
         $("#updateMsg").innerHTML = `<span class="err">${e.message||e}</span>`;
       }
     };
 
-  }catch(e){
+  } catch (e) {
     $("#who").innerHTML = `<span class="err">${e.message||e}</span>`;
   }
 });
