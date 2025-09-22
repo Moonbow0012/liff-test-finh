@@ -126,28 +126,40 @@ async function ensureLiffReady() {
 async function signInFirebaseIfNeeded() {
   if (firebaseSignedIn && firebase?.auth?.().currentUser) return;
 
-  const idt = liff.getIDToken();
-  const dec = decodeJwt(idt);
-  if (!idt) {
-    // แสดงสาเหตุให้ชัด -> ไม่วน login
-    const msg = "LIFF ไม่มี id_token (ต้องเปิด scope 'openid' ที่ LIFF ของหน้า staff)";
-    console.error(msg);
-    $("#who").innerHTML = `<span class="err">${msg}</span>`;
-    throw new Error("NO_ID_TOKEN");
-  }
+  // เผื่อมีคนเข้าหน้าโดยยังไม่ init ให้แน่ใจว่า LIFF พร้อมก่อน
+  await ensureLiffReady();
 
-  // แลก custom token
+  const idt = liff.getIDToken();
+  const at  = liff.getAccessToken();
+
+  // ช่วยไล่บั๊ก: เช็คว่ามี token จริงไหม (ไม่ log ค่าเต็ม)
+  console.log("tokens?", { id: !!idt, at: !!at, aud: liff.getDecodedIDToken?.()?.aud });
+
   const r = await fetch(AUTH_URL, {
     method: "POST",
     headers: { "Content-Type":"application/json" },
-    body: JSON.stringify({ idToken: idt })
+    // ✅ ส่งทั้ง idToken และ accessToken ไปให้ authLine (ฝั่ง server จะ fallback ได้)
+    body: JSON.stringify({ idToken: idt, accessToken: at })
   });
+
   const js = await r.json().catch(()=> ({}));
+
   if (!r.ok || !js.firebaseToken) {
-    // ถ้าตอบ 401 พร้อม detail เช่น AUD_NOT_ALLOWED จะเห็นใน console
+    // เคส id_token หมดอายุ → อนุญาต re-login แค่ 1 ครั้ง ไม่วนลูป
+    const expired =
+      js?.error === "INVALID_LINE_ID_TOKEN" &&
+      /expired/i.test(js?.detail?.error_description || "");
+
+    if (expired && !sessionStorage.getItem("reloginOnce")) {
+      sessionStorage.setItem("reloginOnce","1");
+      liff.logout();
+      liff.login({ redirectUri: location.href });
+      await new Promise(()=>{}); // รอ redirect กลับ
+    }
+
     console.error("authLine failed", js);
-    $("#who").innerHTML = `<span class="err">authLine ล้มเหลว: ${js?.error||r.status}</span>`;
-    throw new Error(js?.error || "AUTHLINE_FAILED");
+    $("#who").innerHTML = `<span class="err">authLine ล้มเหลว: ${js?.error || r.status}</span>`;
+    throw new Error(js?.error || "authLine failed");
   }
 
   if (!firebase.apps?.length) firebase.initializeApp(FIREBASE_CONFIG);
