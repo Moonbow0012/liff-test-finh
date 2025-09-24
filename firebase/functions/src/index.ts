@@ -1,4 +1,4 @@
-// firebase/functions/src/index.ts — Full implementation for pollNexiiot + diagnostics (A & B)
+// firebase/functions/src/index.ts — pollNexiiot + diagnostics
 // Node.js 20, Firebase Functions v2, region asia-southeast1
 // -----------------------------------------------------------------------------
 
@@ -7,10 +7,9 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { defineSecret } from "firebase-functions/params";
 import { setGlobalOptions, logger } from "firebase-functions/v2";
 
-// ✅ firebase-admin v12 modular imports
+// firebase-admin v12 (modular)
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore, Timestamp, FieldValue } from "firebase-admin/firestore";
-import { getAuth } from "firebase-admin/auth";
 
 import type { Request, Response } from "express";
 
@@ -22,9 +21,7 @@ const PROJECT_ID =
   process.env.GCLOUD_PROJECT ||
   "<your-project-id>";
 
-if (!getApps().length) {
-  initializeApp(); // ใช้ ADC บน Cloud Functions ได้เลย
-}
+if (!getApps().length) initializeApp();
 
 setGlobalOptions({
   region: "asia-southeast1",
@@ -43,7 +40,7 @@ const OAUTH_CLIENT_SECRET = defineSecret("OAUTH_CLIENT_SECRET");
 const SERVICE_USERNAME = defineSecret("SERVICE_USERNAME");
 const SERVICE_PASSWORD = defineSecret("SERVICE_PASSWORD");
 const OAUTH_TOKEN_URL = defineSecret("OAUTH_TOKEN_URL"); // optional
-const NX_GRAPHQL_URL = defineSecret("NX_GRAPHQL_URL"); // optional
+const NX_GRAPHQL_URL = defineSecret("NX_GRAPHQL_URL");   // optional
 
 // -----------------------------------------------------------------------------
 // Firestore Refs & Types
@@ -67,16 +64,23 @@ type ProgressDoc = {
   level: string;
   goodNow: boolean;
   goodSince?: Timestamp | null;
-  lastValues?: Record<string, any>;
   updatedAt: Timestamp;
 };
+
+// allowlist ฟิลด์ที่อนุญาตให้เหลืออยู่ใน progress
+const PROGRESS_ALLOWED = new Set([
+  "percent",
+  "level",
+  "goodNow",
+  "goodSince",
+  "updatedAt",
+]);
 
 // -----------------------------------------------------------------------------
 // Small Utils
 // -----------------------------------------------------------------------------
 const nowTs = () => Timestamp.now();
-const clamp = (n: number, lo: number, hi: number) =>
-  Math.max(lo, Math.min(hi, n));
+const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 
 function minutesBetween(a: Timestamp, b: Timestamp) {
   return Math.max(0, (b.toMillis() - a.toMillis()) / 60000);
@@ -84,11 +88,7 @@ function minutesBetween(a: Timestamp, b: Timestamp) {
 
 function toIsoMaybe(ts?: Timestamp | null) {
   if (!ts) return null;
-  try {
-    return ts.toDate().toISOString();
-  } catch {
-    return null;
-  }
+  try { return ts.toDate().toISOString(); } catch { return null; }
 }
 
 function getByPath(obj: any, path: string) {
@@ -100,8 +100,7 @@ function getByPath(obj: any, path: string) {
 // OAuth & GraphQL Helpers
 // -----------------------------------------------------------------------------
 async function getNxAccessToken() {
-  const tokenUrl =
-    process.env.OAUTH_TOKEN_URL || "https://auth.nexiiot.io/oauth/token";
+  const tokenUrl = process.env.OAUTH_TOKEN_URL || "https://auth.nexiiot.io/oauth/token";
   const form = new URLSearchParams({
     grant_type: "password",
     username: process.env.SERVICE_USERNAME || "",
@@ -118,84 +117,71 @@ async function getNxAccessToken() {
 
   const text = await r.text();
   let json: any = {};
-  try {
-    json = JSON.parse(text);
-  } catch {
+  try { json = JSON.parse(text); } catch {
     throw new Error(`token_non_json status=${r.status} body=${text.slice(0, 160)}`);
   }
   if (!r.ok || json.error) {
-    throw new Error(
-      `token_error status=${r.status} error=${json.error || "unknown"} desc=${json.error_description || ""}`
-    );
+    throw new Error(`token_error status=${r.status} error=${json.error || "unknown"} desc=${json.error_description || ""}`);
   }
-  return {
-    access_token: json.access_token as string,
-    expires_in: json.expires_in as number,
-  };
+  return { access_token: json.access_token as string, expires_in: json.expires_in as number };
 }
 
 async function gqlRequest<T = any>(
   accessToken: string,
   body: { query: string; variables?: any }
 ) {
-  const url = process.env.NX_GRAPHQL_URL || "https://gqlv2.nexiiot.io/graphql";
+  const url = (process.env.NX_GRAPHQL_URL || "https://gqlv2.nexiiot.io/graphql").trim();
   const r = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Accept: "application/json",
       Authorization: `Bearer ${accessToken}`,
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ query: body.query, variables: body.variables ?? {} }),
   });
-  const data = await r.json().catch(async () => ({ raw: await r.text() }));
-  return { ok: r.ok, status: r.status, data } as {
-    ok: boolean;
-    status: number;
-    data: T;
-  };
+
+  const text = await r.text().catch(() => "");
+  let json: any = {};
+  try { json = JSON.parse(text); } catch {}
+
+  console.log({ tag: "nx.gql", status: r.status, varKeys: Object.keys(body.variables || {}), respPreview: text.slice(0, 240) });
+
+  return { ok: r.ok, status: r.status, data: json } as { ok: boolean; status: number; data: T };
 }
 
 // -----------------------------------------------------------------------------
-// Shadow Fetcher (REPLACE GraphQL query with your real schema)
+// Shadow Fetcher (ใช้สคีมาที่คุณอินโทรสเปคมา: shadow(deviceid){ deviceid data rev modified })
 // -----------------------------------------------------------------------------
-async function fetchNexiiotShadowValues(
-  devCfg: DeviceConfig
-): Promise<Record<string, any>> {
+async function fetchNexiiotShadowValues(devCfg: DeviceConfig): Promise<Record<string, any>> {
   const deviceId = devCfg.nexiiotDeviceId?.trim();
   if (!deviceId) throw new Error("missing_nexiiotDeviceId_in_device_config");
 
   const { access_token } = await getNxAccessToken();
-
-  const query = /* GraphQL */ `
-    query GetShadow($id: String!) {
-      shadow(deviceId: $id) {
-        json
-        fields { name value ts }
+  const query = `
+    query GetShadow($deviceid: String!) {
+      shadow(deviceid: $deviceid) {
+        deviceid
+        data
+        rev
+        modified
       }
     }
   `;
 
   const { ok, status, data } = await gqlRequest<any>(access_token, {
     query,
-    variables: { id: deviceId },
+    variables: { deviceid: deviceId },
   });
   if (!ok) throw new Error(`graphql_status_${status}`);
 
-  const shadow: any = (data as any)?.data?.shadow;
+  const shadow: any = data?.data?.shadow;
   if (!shadow) throw new Error("shadow_null");
 
-  const values: Record<string, any> = {};
-  if (shadow.json && typeof shadow.json === "object") {
-    Object.assign(values, shadow.json);
-  }
-  if (Array.isArray(shadow.fields)) {
-    for (const f of shadow.fields) {
-      if (f && typeof f.name === "string") values[f.name] = f.value;
-    }
-  }
+  const values = shadow.data;
+  if (!values || typeof values !== "object") throw new Error("shadow_values_empty");
 
-  if (Object.keys(values).length === 0) throw new Error("shadow_values_empty");
-  return values;
+  return values as Record<string, any>;
 }
 
 // -----------------------------------------------------------------------------
@@ -222,10 +208,10 @@ function computeGoodNow(values: Record<string, any>, devCfg: DeviceConfig): bool
 }
 
 function levelFromPercent(p: number): string {
-  if (p >= 100) return "READY";
-  if (p >= 67) return "HIGH";
-  if (p >= 34) return "MID";
-  return "LOW";
+  if (p >= 100) return "Ready!";
+  if (p >= 75)  return "3";
+  if (p >= 25)  return "2";   
+  return "1";               
 }
 
 async function computeAndMaybePersist(
@@ -239,36 +225,24 @@ async function computeAndMaybePersist(
   const devCfg = (devSnap.data() || {}) as DeviceConfig;
 
   const prevSnap = await PROGRESS_COL.doc(deviceId).get();
-  const prev = prevSnap.exists ? (prevSnap.data() as ProgressDoc) : undefined;
+  const prevRaw: any = prevSnap.exists ? prevSnap.data() : undefined;
 
-  let values: Record<string, any> = {};
-  try {
-    values = await fetchNexiiotShadowValues(devCfg);
-  } catch (e: any) {
-    logger.error(
-      JSON.stringify({
-        tag: "compute",
-        stage: "fetch_shadow",
-        deviceId,
-        error: String(e?.message || e),
-      })
-    );
-    throw e;
-  }
+  // ดึงค่าดิบล่าสุด
+  const values = await fetchNexiiotShadowValues(devCfg);
 
+  // คำนวณสถานะ
   const goodNow = computeGoodNow(values, devCfg);
-
   const windowMinutes = Math.max(1, Math.floor(devCfg.windowMinutes || 60));
   const now = nowTs();
 
-  let goodSince: Timestamp | null = prev?.goodSince || null;
+  let goodSince: Timestamp | null = (prevRaw?.goodSince as Timestamp) || null;
   if (goodNow) {
-    if (!prev?.goodNow || !prev?.goodSince) goodSince = now;
+    if (!prevRaw?.goodNow || !prevRaw?.goodSince) goodSince = now;
   } else {
     goodSince = null;
   }
 
-  let percent = prev?.percent || 0;
+  let percent = (prevRaw?.percent as number) || 0;
   if (goodNow && goodSince) {
     const mins = minutesBetween(goodSince, now);
     percent = clamp(Math.floor((mins / windowMinutes) * 100), 0, 100);
@@ -276,24 +250,23 @@ async function computeAndMaybePersist(
 
   const level = levelFromPercent(percent);
 
-  const progress: { // กำหนดชนิดให้ชัดเพื่อ TS
-    percent: number;
-    level: string;
-    goodNow: boolean;
-    goodSince: Timestamp | null;
-    lastValues: Record<string, any>;
-    updatedAt: Timestamp;
-  } = {
+  // สร้างเอกสาร progress (ไม่มีค่าดิบ)
+  const progress: ProgressDoc = {
     percent,
     level,
     goodNow,
     goodSince: goodSince || null,
-    lastValues: values,
     updatedAt: now,
   };
 
+  // ลบฟิลด์เก่าที่ไม่อยู่ใน allowlist ออก (เพื่อให้ progress สะอาด)
+  const deleteMap: Record<string, any> = {};
+  for (const k of Object.keys(prevRaw || {})) {
+    if (!PROGRESS_ALLOWED.has(k)) deleteMap[k] = FieldValue.delete();
+  }
+
   if (!dryRun) {
-    await PROGRESS_COL.doc(deviceId).set(progress, { merge: true });
+    await PROGRESS_COL.doc(deviceId).set({ ...deleteMap, ...progress }, { merge: true });
   }
 
   return {
@@ -303,6 +276,7 @@ async function computeAndMaybePersist(
     goodNow,
     goodSinceIso: toIsoMaybe(progress.goodSince),
     updatedAtIso: toIsoMaybe(progress.updatedAt),
+    values,           
     persisted: !dryRun,
   };
 }
@@ -313,14 +287,7 @@ async function computeAndMaybePersist(
 export const diagSecrets = onRequest(
   {
     cors: true,
-    secrets: [
-      OAUTH_CLIENT_ID,
-      OAUTH_CLIENT_SECRET,
-      SERVICE_USERNAME,
-      SERVICE_PASSWORD,
-      OAUTH_TOKEN_URL,
-      NX_GRAPHQL_URL,
-    ],
+    secrets: [OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, SERVICE_USERNAME, SERVICE_PASSWORD, OAUTH_TOKEN_URL, NX_GRAPHQL_URL],
   },
   async (_req: Request, res: Response): Promise<void> => {
     const has = (k: string) => Boolean((process.env as any)[k]);
@@ -341,13 +308,7 @@ export const diagSecrets = onRequest(
 export const diagToken = onRequest(
   {
     cors: true,
-    secrets: [
-      OAUTH_CLIENT_ID,
-      OAUTH_CLIENT_SECRET,
-      SERVICE_USERNAME,
-      SERVICE_PASSWORD,
-      OAUTH_TOKEN_URL,
-    ],
+    secrets: [OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, SERVICE_USERNAME, SERVICE_PASSWORD, OAUTH_TOKEN_URL],
   },
   async (_req: Request, res: Response): Promise<void> => {
     try {
@@ -366,14 +327,7 @@ export const diagToken = onRequest(
 export const diagGraphql = onRequest(
   {
     cors: true,
-    secrets: [
-      OAUTH_CLIENT_ID,
-      OAUTH_CLIENT_SECRET,
-      SERVICE_USERNAME,
-      SERVICE_PASSWORD,
-      OAUTH_TOKEN_URL,
-      NX_GRAPHQL_URL,
-    ],
+    secrets: [OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, SERVICE_USERNAME, SERVICE_PASSWORD, OAUTH_TOKEN_URL, NX_GRAPHQL_URL],
   },
   async (req: Request, res: Response): Promise<void> => {
     try {
@@ -389,7 +343,7 @@ export const diagGraphql = onRequest(
 );
 
 // -----------------------------------------------------------------------------
-// HTTP: getProgress — always respond JSON (void/Promise<void>)
+// HTTP: getProgress — JSON only
 // -----------------------------------------------------------------------------
 export const getProgress = onRequest({ cors: true }, async (req: Request, res: Response): Promise<void> => {
   try {
@@ -400,15 +354,13 @@ export const getProgress = onRequest({ cors: true }, async (req: Request, res: R
     if (!doc.exists) { res.status(404).json({ error: "not_found" }); return; }
 
     const d = doc.data() as ProgressDoc;
-
     res.json({
       deviceId,
       percent: d.percent,
       level: d.level,
-      goodNow: (d as any).Status ?? d.goodNow ?? false, // support old schema
+      goodNow: (d as any).Status ?? d.goodNow ?? false, // รองรับสคีมาเก่า
       goodSince: toIsoMaybe(d.goodSince || null),
       updatedAt: toIsoMaybe(d.updatedAt),
-      lastValues: d.lastValues || {},
     });
   } catch (e: any) {
     logger.error("getProgress.error " + String(e?.message || e));
@@ -422,14 +374,7 @@ export const getProgress = onRequest({ cors: true }, async (req: Request, res: R
 export const recomputeOne = onRequest(
   {
     cors: true,
-    secrets: [
-      OAUTH_CLIENT_ID,
-      OAUTH_CLIENT_SECRET,
-      SERVICE_USERNAME,
-      SERVICE_PASSWORD,
-      OAUTH_TOKEN_URL,
-      NX_GRAPHQL_URL,
-    ],
+    secrets: [OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, SERVICE_USERNAME, SERVICE_PASSWORD, OAUTH_TOKEN_URL, NX_GRAPHQL_URL],
   },
   async (req: Request, res: Response): Promise<void> => {
     const deviceId = String(req.query.deviceId || "");
@@ -475,14 +420,14 @@ export const diagPollStatus = onRequest({ cors: true }, async (_req: Request, re
 });
 
 // -----------------------------------------------------------------------------
-// HTTP: purgeProgressLastValues (ตัวอย่าง util ที่ error ตอนก่อน)
+// HTTP: purgeProgressLastValues — ล้างฟิลด์ค่าดิบที่ค้างใน progress
 // -----------------------------------------------------------------------------
-export const purgeProgressLastValues = onRequest({ cors: true }, async (req: Request, res: Response): Promise<void> => {
+export const purgeProgressLastValues = onRequest({ cors: true }, async (req, res) => {
   try {
     const deviceId = String(req.query.deviceId || "");
     if (!deviceId) { res.status(400).json({ error: "Missing deviceId" }); return; }
 
-    await PROGRESS_COL.doc(deviceId).set({ lastValues: FieldValue.delete() }, { merge: true });
+    await PROGRESS_COL.doc(deviceId).set({ lastValues: FieldValue.delete() }, { merge: true }); // ✅
     res.json({ ok: true, deviceId });
   } catch (e: any) {
     res.status(500).json({ error: String(e?.message || e) });
@@ -496,20 +441,11 @@ export const pollNexiiot = onSchedule(
   {
     schedule: "*/5 * * * *",
     timeZone: "Asia/Bangkok",
-    secrets: [
-      OAUTH_CLIENT_ID,
-      OAUTH_CLIENT_SECRET,
-      SERVICE_USERNAME,
-      SERVICE_PASSWORD,
-      OAUTH_TOKEN_URL,
-      NX_GRAPHQL_URL,
-    ],
+    secrets: [OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, SERVICE_USERNAME, SERVICE_PASSWORD, OAUTH_TOKEN_URL, NX_GRAPHQL_URL],
   },
   async () => {
     const runId = Date.now();
-    const startedAt = nowTs();
-
-    await STATE_REF.set({ status: "running", runId, startedAt }, { merge: true });
+    await STATE_REF.set({ status: "running", runId, startedAt: nowTs() }, { merge: true });
 
     let okCount = 0, errCount = 0;
     const perDevice: Record<string, any> = {};
@@ -521,22 +457,21 @@ export const pollNexiiot = onSchedule(
         const out = await computeAndMaybePersist(deviceId, { dryRun: false });
         okCount++;
         perDevice[deviceId] = {
-          percent: out.percent,
-          level: out.level,
+          ok: true,
           updatedAt: out.updatedAtIso,
+          values: out.values, // เก็บค่าดิบล่าสุดไว้ที่ functions_state
         };
-        logger.info(JSON.stringify({ tag: "pollNexiiot", deviceId, ok: true, ...perDevice[deviceId] }));
+        logger.info(JSON.stringify({ tag: "pollNexiiot", deviceId, ok: true, updatedAt: out.updatedAtIso }));
       } catch (e: any) {
         errCount++;
         const errMsg = String(e?.message || e);
-        perDevice[deviceId] = { error: errMsg };
+        perDevice[deviceId] = { ok: false, error: errMsg };
         logger.error(JSON.stringify({ tag: "pollNexiiot", deviceId, ok: false, error: errMsg }));
       }
     }
 
-    const finishedAt = nowTs();
     await STATE_REF.set(
-      { status: "idle", runId, lastRunAt: finishedAt, okCount, errCount, perDevice },
+      { status: "idle", runId, lastRunAt: nowTs(), okCount, errCount, perDevice },
       { merge: true }
     );
   }
@@ -547,10 +482,8 @@ export const pollNexiiot = onSchedule(
 // -----------------------------------------------------------------------------
 export const diagWhoami = onRequest({ cors: true }, async (_req: Request, res: Response): Promise<void> => {
   try {
-    const r = await fetch(
-      "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email",
-      { headers: { "Metadata-Flavor": "Google" } }
-    );
+    const r = await fetch("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email",
+      { headers: { "Metadata-Flavor": "Google" } });
     const email = r.ok ? await r.text() : null;
     res.json({
       projectId: PROJECT_ID,

@@ -371,7 +371,7 @@ const levelDots = Array.from({ length: 5 }).map((_, i) => ({
 /* === Webhook === */
 export const lineWebhookTracking = onRequest({
   region: "asia-southeast1",
-  memory: "256MiB",
+  memory: "128MiB",
   timeoutSeconds: 15,
   maxInstances: 1,
   minInstances: 0,
@@ -386,60 +386,42 @@ export const lineWebhookTracking = onRequest({
 
   for (const ev of events) {
     try {
+      // สนใจเฉพาะข้อความตัวอักษร
       if (ev.type !== "message" || ev.message?.type !== "text") continue;
 
-      // อนุโลมช่องว่าง + แปลงเป็นตัวใหญ่
-      const raw = (ev.message.text || "");
+      // normalize: ตัดช่องว่าง + uppercase
+      const raw = String(ev.message.text || "");
       const txt = raw.replace(/\s+/g, "").toUpperCase();
       const m = txt.match(/[A-Z]{2}-\d{6}-[A-Z0-9]{5}/);
-      console.log({ tag: "incoming.text", raw, normalized: txt, userId: ev.source?.userId || null });
-
-      if (!m) {
-        await lineReply(LINE_CHANNEL_ACCESS_TOKEN.value(), ev.replyToken, {
-          type: "text",
-          text: "พิมพ์เลขติดตาม เช่น WX-250919-7F4K2"
-        });
-        continue;
-      }
+      if (!m) continue; // ไม่ใช่โค้ดตามแพทเทิร์น → เงียบ ให้ OA จัดการ
 
       const serial = m[0];
       const doc = await getTrackingDoc(serial);
 
-      if (!doc || (doc.data as any).public !== true) {
+      // ถ้าเป็นรูปแบบโค้ดแต่ "ไม่พบ/ไม่ public" → ตอบว่าโค้ดผิด
+      if (!doc || (doc.data as any)?.public !== true) {
         await lineReply(LINE_CHANNEL_ACCESS_TOKEN.value(), ev.replyToken, {
           type: "text",
-          text: `ไม่พบเลขติดตาม ${serial}`,
-          quickReply: {
-            items: [{ type: "action", action: { type: "message", label: "วิธีพิมพ์เลข", text: "พิมพ์เลขติดตาม เช่น WX-YYMMDD-ABCDE" } }]
-          }
+          text: `รหัสติดตามไม่ถูกต้อง: ${serial}`
         });
         continue;
       }
 
-      const t: any = doc.data;
+      // พบ + public → ตอบสถานะด้วย Flex
+      const d: any = doc.data;
       const tracking = {
-        serial: t.serial,
-        title: t.title,
-        state: t.state,
-        statusText: t.statusText,
-        statusLevel: t.statusLevel,
-        statusHistory: t.statusHistory || []
+        serial: d.serial,
+        title: d.title,
+        state: d.state,
+        statusText: d.statusText,
+        statusLevel: d.statusLevel,
+        statusHistory: Array.isArray(d.statusHistory) ? d.statusHistory : []
       };
 
-      // ส่ง Flex
-      const rep = await lineReply(LINE_CHANNEL_ACCESS_TOKEN.value(), ev.replyToken, buildFlex(tracking));
-
-      if (!rep.ok && ev.source?.userId) {
-        await linePush(LINE_CHANNEL_ACCESS_TOKEN.value(), ev.source.userId, {
-          type: "text",
-          text: `เลข ${tracking.serial}\nสถานะ: ${tracking.state}\nข้อความ: ${tracking.statusText || "-"}`
-        });
-      }
+      await lineReply(LINE_CHANNEL_ACCESS_TOKEN.value(), ev.replyToken, buildFlex(tracking));
     } catch (e) {
       console.error("[lineWebhookTracking] event error", e);
-      try {
-        await lineReply(LINE_CHANNEL_ACCESS_TOKEN.value(), ev.replyToken, { type: "text", text: "เกิดข้อผิดพลาด กรุณาลองใหม่" });
-      } catch {}
+      // ไม่ตอบ error กลับ เพื่อให้ OA จัดการข้อความอื่นได้ตามต้องการ
     }
   }
 
