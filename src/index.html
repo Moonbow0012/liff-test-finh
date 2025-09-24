@@ -15,54 +15,116 @@
   <!-- LIFF SDK -->
   <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
-  <!-- UI เพิ่มเติมเล็กน้อย -->
+  <!-- สไตล์เพิ่มให้หน้าตาตรงภาพ -->
   <style>
+    :root{
+      --bar-h: 8px;               /* ปรับความสูงแถบ progress ได้ที่นี่ */
+      --card-radius: 16px;
+    }
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, 'Helvetica Neue', Arial, 'Noto Sans Thai', sans-serif;
+      color:#11472d;
+      min-height:100vh;
+      background: linear-gradient(180deg,#4caf67 0%, #6dcf7b 45%, #b5e39f 100%) fixed;
+    }
+
+    /* Top bar */
     .topbar{
       position: sticky; top: 0; z-index: 50;
       display:flex; align-items:center; justify-content:space-between;
       padding:12px 16px;
-      background:linear-gradient(180deg,#4caf67 0%,#7ed07b 100%);
       color:#fff;
-      box-shadow:0 1px 0 rgba(0,0,0,.06);
+      background: transparent;
     }
-    .topbar .brand img{height:28px; display:block}
-    .topbar .right{display:flex; align-items:center; gap:8px}
+    .brand img{ height:28px; display:block; }
+    .topbar .right{ display:flex; gap:8px; align-items:center; }
     .topbar select{
-      appearance:none; border:0; border-radius:999px; padding:8px 12px;
-      background:#ffffffdd; color:#0f172a; font-weight:600;
-      max-width: 60vw;
+      appearance:none; border:0; outline:0;
+      border-radius:999px; padding:8px 12px;
+      background:#ffffffdd; color:#0f172a; font-weight:700;
+      max-width:62vw;
     }
     .icon-btn{
       border:0; background:#ffffffcc; border-radius:999px; padding:8px 10px;
       line-height:1; cursor:pointer;
     }
 
-    .container{max-width:460px; margin:0 auto; padding:0 12px 40px}
-    .hero{
-      display:flex; align-items:center; justify-content:center;
-      margin:18px auto 6px; width:96px; height:96px; border-radius:999px;
-      background: radial-gradient(ellipse at center, #ffffff 0%, #e7ffe9 100%);
-      box-shadow: 0 2px 12px rgba(16, 185, 129, .25) inset, 0 8px 20px rgba(16,24,40,.06);
-    }
-    .hero img{width:68px; height:68px; object-fit:contain}
-    .section-title{ text-align:center; font-weight:800; color:#155e2d; margin-top:6px }
-    .subtle{ text-align:center; color:#5b8a6a; font-size:12px }
+    .wrap{ max-width:420px; margin:0 auto; padding: 6px 16px 40px; }
 
-    /* ปรับขนาดกราฟเล็กลงได้ที่นี่ */
-    .progress .bar{ height: 8px; }       /* เดิมในธีมอาจ 10–12px */
-    .progress .pct{ font-size: 12px; }
+    /* Hero (ไอคอน Organic ตรงกลาง) */
+    .hero{
+      width:104px; height:104px; margin:18px auto 10px;
+      border-radius:999px;
+      display:flex; align-items:center; justify-content:center;
+      background: radial-gradient(ellipse at center, #fff 0%, #e7ffe9 100%);
+      box-shadow: 0 2px 14px rgba(16, 185, 129, .25) inset, 0 8px 22px rgba(16,24,40,.06);
+    }
+    .hero img{ width:74px; height:74px; object-fit:contain; }
+
+    .center{ text-align:center; color:#ffffff; }
+    .title{ font-size:20px; font-weight:800; }
+    .sub{ opacity:.9; font-weight:600; }
+
+    /* Progress เล็กแบบภาพ */
+    .progress-lite{
+      display:flex; align-items:center; gap:10px;
+      justify-content:center; margin:12px auto 0; width:88%;
+    }
+    .track{
+      flex:1; height:var(--bar-h);
+      background:#ffffff70; border-radius:999px; overflow:hidden;
+    }
+    .fill{
+      height:100%; width:0%;
+      background:#2ecc71; border-radius:999px;
+      transition: width .35s ease;
+    }
+    .pct{ color:#fff; font-weight:800; }
+
+    /* การ์ด Status */
+    .card{
+      background:#fff; border-radius: var(--card-radius);
+      box-shadow: 0 10px 30px rgba(0,0,0,.08);
+      border:1px solid #e6f3e8;
+      margin-top:18px; padding:12px 14px;
+    }
+    .card h3{
+      margin:6px 8px 8px; font-size:14px; color:#215b3a; letter-spacing:.2px;
+    }
+    .metrics{ list-style:none; padding:0; margin:0; }
+    .metrics li{
+      display:flex; align-items:center; justify-content:space-between;
+      padding:14px 10px;
+      border-top:1px solid #edf3ee;
+    }
+    .metrics li:first-child{ border-top:0; }
+    .metric-left{ display:flex; align-items:center; gap:10px; color:#215b3a; }
+    .ic{
+      width:28px; height:28px; display:grid; place-items:center;
+      border-radius:10px; background:#e8f7ec; color:#1d8b4d;
+    }
+    .val{ font-weight:700; color:#173c28; }
+
+    /* CTA ด้านล่าง */
+    .cta{
+      margin:18px auto 0; width:100%;
+      background:#e7efe8; color:#5d7468;
+      font-weight:800; font-size:16px;
+      border:0; border-radius:18px; padding:16px 12px;
+    }
+    .cta.ready{ background:#1bb266; color:#fff; box-shadow:0 6px 18px rgba(27,178,102,.35); }
+
+    /* Debug log (ปิดไว้เป็นค่าเริ่มต้น) */
+    #out{ display:none; }
   </style>
 </head>
 <body>
 
-  <!-- Topbar -->
+  <!-- Top bar -->
   <header class="topbar">
-    <div class="brand">
-      <!-- ใส่โลโก้ FINH ของคุณ -->
-      <img src="/finh_logo.png" alt="FINH">
-    </div>
+    <div class="brand"><img src="/finh_logo.png" alt="FINH"></div>
     <div class="right">
-      <!-- ใช้ id เดิมเพื่อไม่กระทบ JS/Backend -->
       <select id="deviceSelect" title="Select device">
         <option value="" selected disabled>Loading devices…</option>
       </select>
@@ -70,209 +132,255 @@
     </div>
   </header>
 
-  <!-- เนื้อหา -->
-  <div id="app" class="container">
-    <!-- ไอคอนตรงกลาง -->
+  <main class="wrap">
+    <!-- Hero + Title -->
     <div class="hero"><img src="/organic.png" alt="organic"></div>
-    <div class="section-title">Peak Protein</div>
-    <div class="subtle">
-      Level <span id="growthLevel">—</span> • <span id="growthPctTop">—</span>%
+    <div class="center">
+      <div class="title">Peak Protein</div>
+      <div class="sub">Level <span id="growthLevel">-</span></div>
     </div>
 
-    <!-- การ์ดแสดง %/สถานะ -->
-    <div class="card" id="growthCard" style="margin-top:12px">
-      <div class="row">
-        <div class="progress flex-1">
-          <div class="bar"><span id="growthBar" style="width:0%"></span></div>
-          <div class="pct"><span id="growthPctInline">—</span>%</div>
-        </div>
-      </div>
-      <div class="row muted">
-        <div>Status: <span id="growthGood">—</span></div>
-        <div>Updated: <span id="growthUpdated">—</span></div>
-      </div>
+    <!-- Progress -->
+    <div class="progress-lite">
+      <div class="track"><div id="barFill" class="fill"></div></div>
+      <div class="pct"><span id="pctTop">0</span>%</div>
     </div>
 
-    <!-- สถานะเรียกข้อมูล + debug -->
-    <div class="muted" id="status" style="margin:8px 4px 0 4px; display:block"></div>
-    <pre id="out" class="log" style="margin-top:12px">—</pre>
-  </div>
+    <!-- Status Card -->
+    <section class="card" id="statusCard">
+      <h3>Status</h3>
+      <ul class="metrics">
+        <li>
+          <div class="metric-left">
+            <div class="ic">🍃</div><div>Chlorophyll</div>
+          </div>
+          <div class="val" id="mChl">—</div>
+        </li>
+        <li>
+          <div class="metric-left">
+            <div class="ic">💧</div><div>Soil pH</div>
+          </div>
+          <div class="val" id="mPh">—</div>
+        </li>
+        <li>
+          <div class="metric-left">
+            <div class="ic">🌡️</div><div>Temp</div>
+          </div>
+          <div class="val" id="mTemp">—</div>
+        </li>
+        <li>
+          <div class="metric-left">
+            <div class="ic">⚡</div><div>Soil EC</div>
+          </div>
+          <div class="val" id="mEc">—</div>
+        </li>
+      </ul>
+    </section>
+
+    <!-- Big CTA -->
+    <button id="ctaState" class="cta">Not Ready Yet</button>
+
+    <!-- แสดงสถานะโหลด + debug -->
+    <div id="status" style="color:#fff; margin:10px 4px;"></div>
+    <pre id="out" class="log">—</pre>
+  </main>
 
   <script>
-  // ====== ค่าคงเดิม (ไม่แตะ Backend/Firebase) ======
+  // ======== ค่าคงเดิม (ไม่แตะ Backend/Firebase) =========
   const LIFF_ID = '2008085765-YDwJrxy9';
   const FIREBASE_PROGRESS_URL = 'https://getprogress-iyipepekja-as.a.run.app';
 
   const $ = (id) => document.getElementById(id);
-  const root = document.getElementById('app') || document.body;
+  const statusEl = $('status');
+  const out = $('out');
 
-  const showError = (err) => {
+  const barFill = $('barFill');
+  const pctTop = $('pctTop');
+  const growthLevel = $('growthLevel');
+  const cta = $('ctaState');
+
+  const metricEls = { chl: $('mChl'), ph: $('mPh'), temp: $('mTemp'), ec: $('mEc') };
+
+  function showError(err){
     console.error(err);
     const msg = (typeof err === 'string') ? err : (err?.message || JSON.stringify(err));
-    root.insertAdjacentHTML('beforeend',
-      `<pre class="log" style="background:#0b1020;color:#cbd5e1">ERROR: ${msg}</pre>`);
-  };
-
-  function buildAuthHeaders() {
-    const storedIdToken = sessionStorage.getItem('line_id_token') || liff.getIDToken();
-    const storedAccess  = sessionStorage.getItem('line_access_token') || liff.getAccessToken();
-    const h = { 'Content-Type': 'application/json' };
-    if (storedIdToken && storedIdToken.includes('.')) {
-      h['x-line-id-token'] = storedIdToken;
-    } else if (storedAccess) {
-      h['x-line-access-token'] = storedAccess;
-    } else {
-      throw new Error('No LINE token available. Please login again.');
-    }
-    return h;
+    statusEl.textContent = 'Error: ' + msg;
+    out.style.display = 'block';
+    out.textContent = msg;
   }
 
-  async function authedGet(url) {
+  function buildAuthHeaders(){
+    const idToken = sessionStorage.getItem('line_id_token') || liff.getIDToken();
+    const access  = sessionStorage.getItem('line_access_token') || liff.getAccessToken();
+    const h = { 'Content-Type': 'application/json' };
+    if (idToken && idToken.includes('.')) h['x-line-id-token'] = idToken;
+    else if (access) h['x-line-access-token'] = access;
+    else throw new Error('No LINE token available');
+    return h;
+  }
+  async function authedGet(url){
     const r = await fetch(url, { headers: buildAuthHeaders() });
-    const t = await r.text(); let j;
-    try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
+    const t = await r.text(); let j; try{ j = JSON.parse(t); }catch{ throw new Error(`HTTP ${r.status}: ${t}`); }
     if (!r.ok || j.error) throw new Error(j.error || t);
     return j;
   }
-
-  async function authedPost(url, body) {
+  async function authedPost(url, body){
     const r = await fetch(url, { method:'POST', headers: buildAuthHeaders(), body: JSON.stringify(body||{}) });
-    const t = await r.text(); let j;
-    try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
+    const t = await r.text(); let j; try{ j = JSON.parse(t); }catch{ throw new Error(`HTTP ${r.status}: ${t}`); }
     if (!r.ok || j.errors) throw new Error(j.errors ? JSON.stringify(j.errors) : t);
     return j;
   }
 
-  function normalizeLevel(lvl) {
+  function normalizeLevel(lvl){
     if (typeof lvl === 'number') return ['1','2','3','4'][Math.max(0, Math.min(3, lvl))] || String(lvl);
     if (typeof lvl === 'string' && /^\d+$/.test(lvl)) {
       const n = parseInt(lvl, 10);
       return ['1','2','3','4'][Math.max(0, Math.min(3, n))] || lvl;
     }
-    return String(lvl || '—');
+    if (String(lvl).toLowerCase().includes('ready')) return '4';
+    return String(lvl || '-');
   }
 
-  function pickUpdated(data) {
-    if (data.updatedAtIso) return data.updatedAtIso;
-    const u = data.updatedAt;
+  function pickUpdated(d){
+    if (d.updatedAtIso) return d.updatedAtIso;
+    const u = d.updatedAt;
     if (!u) return '—';
     if (typeof u === 'string') return u;
     if (u && typeof u === 'object' && '_seconds' in u) return new Date(u._seconds * 1000).toISOString();
     return String(u);
   }
 
-  window.addEventListener('DOMContentLoaded', async () => {
-    try {
-      await liff.init({ liffId: LIFF_ID });
-      if (!liff.isLoggedIn()) { liff.login({ scope: ['openid','profile','email'], prompt: 'consent' }); return; }
+  // หาค่าจาก shadow แบบเดาคีย์ทั่วไป (กันหลายชื่อ)
+  function getNum(obj, keys){
+    const all = Object.keys(obj || {});
+    // หา key ที่ตรงแบบ contains (ไม่สนตัวพิมพ์เล็กใหญ่ / _ .)
+    const canon = s => String(s||'').toLowerCase();
+    for (const k of all){
+      const ck = canon(k);
+      if (keys.some(q => ck.includes(canon(q)))){
+        const v = Number(obj[k]);
+        if (!Number.isNaN(v)) return v;
+      }
+    }
+    // รองรับ data ซ้อน
+    for (const k of all){
+      if (obj[k] && typeof obj[k] === 'object'){
+        const v = getNum(obj[k], keys);
+        if (typeof v === 'number') return v;
+      }
+    }
+    return null;
+  }
 
-      // ล้าง ?code=
+  function setMetric(el, val, suffix=''){
+    el.textContent = (val==null || Number.isNaN(val)) ? '—' : (suffix ? `${val}${suffix}` : String(val));
+  }
+
+  async function loadShadow(deviceId){
+    const Q = 'query($deviceid:String!){ shadow(deviceid:$deviceid){ deviceid rev modified data } }';
+    const r = await authedPost('/api/gql', { query: Q, variables: { deviceid: deviceId }});
+    out.textContent = JSON.stringify(r.data, null, 2);   // debug ไว้ก่อน (ซ่อนไว้)
+    const data = r?.data?.shadow?.data || {};
+
+    // เดาชื่อคีย์ทั่วไป
+    const chl  = getNum(data, ['chloro','chlorophyll','par','ndvi','leaf']);
+    const ph   = getNum(data, ['soil_ph','pH','ph']);
+    const temp = getNum(data, ['temp','temperature']);
+    const ec   = getNum(data, ['soil_ec','ec','conductivity']);
+
+    setMetric(metricEls.chl,  chl!=null ? +chl.toFixed(1) : null);
+    setMetric(metricEls.ph,   ph!=null ? +ph.toFixed(2) : null);
+    setMetric(metricEls.temp, temp!=null ? +temp.toFixed(1) : null, '°C');
+    setMetric(metricEls.ec,   ec!=null ? +ec.toFixed(3) : null);
+  }
+
+  async function loadProgress(deviceId){
+    const url = `${FIREBASE_PROGRESS_URL}?deviceId=${encodeURIComponent(deviceId)}`;
+    const r = await fetch(url, { cache:'no-store' });
+    const data = await r.json();
+    if (!r.ok || data.error) throw new Error(data.error || JSON.stringify(data));
+
+    const pct = typeof data.percent === 'number' ? Math.max(0, Math.min(100, data.percent)) : null;
+    const lvl = normalizeLevel(data.level);
+    const good = ('Status' in data) ? !!data.Status : !!data.goodNow;
+    const updated = pickUpdated(data);
+
+    pctTop.textContent = pct!=null ? pct.toFixed(1) : '—';
+    barFill.style.width = pct!=null ? `${pct}%` : '0%';
+    growthLevel.textContent = lvl;
+
+    cta.textContent = good ? 'Ready!' : 'Not Ready Yet';
+    cta.classList.toggle('ready', good);
+
+    statusEl.textContent = `Updated: ${updated}`;
+  }
+
+  window.addEventListener('DOMContentLoaded', async () => {
+    try{
+      await liff.init({ liffId: LIFF_ID });
+      if (!liff.isLoggedIn()){
+        liff.login({ scope:['openid','profile','email'], prompt:'consent' });
+        return;
+      }
+
+      // clear ?code
       const qs = new URLSearchParams(location.search);
-      if (qs.get('code')) {
+      if (qs.get('code')){
         const redirectUri = qs.get('liffRedirectUri')
           ? decodeURIComponent(qs.get('liffRedirectUri'))
           : (location.origin + location.pathname);
         history.replaceState({}, '', redirectUri);
       }
 
-      // cache tokens
+      // cache token
       const idToken = liff.getIDToken();
       const accessToken = liff.getAccessToken();
       if (idToken) sessionStorage.setItem('line_id_token', idToken);
       if (accessToken) sessionStorage.setItem('line_access_token', accessToken);
 
-      const sel = $('deviceSelect'), out = $('out'), statusEl = $('status');
-      const growthBar = $('growthBar'),
-            growthPctTop = $('growthPctTop'),
-            growthPctInline = $('growthPctInline'),
-            growthLevel = $('growthLevel'),
-            growthGood = $('growthGood'),
-            growthUpdated = $('growthUpdated');
+      const sel = $('deviceSelect');
 
-      // ----- โหลดอุปกรณ์ (กัน error เมื่อ backend ล่ม) -----
+      // โหลดรายการอุปกรณ์
       let devices = [];
-      try {
+      try{
         const resp = await authedGet('/api/devices');
         devices = Array.isArray(resp?.devices) ? resp.devices : [];
-      } catch (e) {
-        devices = [];
-        showError(e);
-      }
+      }catch(e){ showError(e); }
 
       sel.innerHTML = '';
-      if (devices.length === 0) {
+      if (devices.length === 0){
         const op = document.createElement('option');
         op.value = ''; op.textContent = 'No device';
         sel.appendChild(op);
-      } else {
-        devices.forEach(d => {
+      }else{
+        devices.forEach(d=>{
           const op = document.createElement('option');
-          op.value = d.deviceId;
-          op.textContent = d.name || d.deviceId;
+          op.value = d.deviceId; op.textContent = d.name || d.deviceId;
           sel.appendChild(op);
         });
         const saved = localStorage.getItem('deviceId');
-        if (saved && [...sel.options].some(o => o.value === saved)) sel.value = saved;
+        if (saved && [...sel.options].some(o=>o.value===saved)) sel.value = saved;
       }
 
-      sel.onchange = async () => {
-        localStorage.setItem('deviceId', sel.value || '');
-        await refresh();
-        await loadGrowth();
-      };
-      $('refreshBtn').onclick = async () => { await refresh(); await loadGrowth(); };
-
-      // ----- Debug GraphQL shadow -----
-      const Q_SHADOW = 'query($deviceid:String!){ shadow(deviceid:$deviceid){ deviceid rev modified data } }';
-      async function refresh() {
+      async function refreshAll(){
         if (!sel.value) { statusEl.textContent = 'Select a device first'; return; }
-        try {
-          statusEl.textContent = 'Loading…';
-          const r = await authedPost('/api/gql', { query: Q_SHADOW, variables: { deviceid: sel.value } });
-          out.textContent = JSON.stringify(r.data, null, 2);
-          statusEl.textContent = 'Updated: ' + new Date().toISOString();
-        } catch (e) { statusEl.textContent = 'Failed'; showError(e); }
+        statusEl.textContent = 'Loading…';
+        try{
+          await loadShadow(sel.value);
+          await loadProgress(sel.value);
+          statusEl.textContent = 'Updated';
+        }catch(e){ showError(e); }
       }
 
-      // ----- โหลด %/Level -----
-      async function loadGrowth() {
-        if (!sel.value) { return; }
-        try {
-          const url = `${FIREBASE_PROGRESS_URL}?deviceId=${encodeURIComponent(sel.value)}`;
-          const r = await fetch(url, { cache: 'no-store' });
-          const data = await r.json();
-          if (!r.ok || data.error) throw new Error(data.error || JSON.stringify(data));
+      $('refreshBtn').onclick = refreshAll;
+      sel.onchange = async ()=>{
+        localStorage.setItem('deviceId', sel.value || '');
+        await refreshAll();
+      };
 
-          const pct = typeof data.percent === 'number' ? Math.max(0, Math.min(100, data.percent)) : null;
-          const lvl = normalizeLevel(data.level);
-          const good = ('Status' in data) ? !!data.Status : !!data.goodNow;
-          const updated = pickUpdated(data);
-
-          const pctText = pct != null ? pct.toFixed(1) : '—';
-          growthPctTop.textContent = pctText;
-          growthPctInline.textContent = pctText;
-          growthBar.style.width = pct != null ? `${pct}%` : '0%';
-          growthLevel.textContent = lvl;
-          growthGood.textContent = good ? 'OK' : 'NOT OK';
-          growthGood.className = good ? 'status-ok' : 'status-bad';
-          growthUpdated.textContent = updated;
-        } catch (e) {
-          growthPctTop.textContent = growthPctInline.textContent = '—';
-          growthBar.style.width = '0%';
-          growthLevel.textContent = '—';
-          growthGood.textContent = '—';
-          growthGood.className = '';
-          growthUpdated.textContent = '—';
-          showError(e);
-        }
-      }
-
-      // เริ่มต้น
-      await refresh();
-      await loadGrowth();
-      setInterval(loadGrowth, 60000);
-
-    } catch (e) { showError(e); }
+      await refreshAll();
+      setInterval(()=> sel.value && loadProgress(sel.value).catch(showError), 60000);
+    }catch(e){ showError(e); }
   });
   </script>
 </body>
