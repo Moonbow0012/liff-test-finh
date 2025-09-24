@@ -2,240 +2,304 @@
 <html lang="th">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
     <title>FINH LIFF</title>
 
-    <!-- กันเบราว์เซอร์ยิง /favicon.ico แล้ว 404 -->
     <link rel="icon" href="data:,">
-
-    <!-- โหลดธีมภายนอก (เวอร์ชันพารามฯ ช่วย bust cache เวลาอัปเดต) -->
     <link rel="preload" as="style" href="/finh-theme.css?v=1">
     <link rel="stylesheet" href="/finh-theme.css?v=1">
-
-    <!-- LIFF SDK -->
     <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+    <!-- STYLE เสริม (ไม่ไปทับ finh-theme.css) -->
+    <style>
+      :root{
+        --grad-1:#62c971; --grad-2:#c9ef86;
+        --shadow:0 10px 24px rgba(0,0,0,.06);
+      }
+      body{ min-height:100svh; background:radial-gradient(120% 120% at 50% -10%,var(--grad-1),var(--grad-2)) fixed; }
+      .screen{ max-width:420px; margin:0 auto; padding:18px 16px 96px; display:grid; gap:14px; }
+      .topbar{ display:flex; align-items:center; justify-content:space-between; color:#fff; font-weight:800; font-size:22px; }
+      .iconbtn{ width:34px;height:34px;border-radius:10px;border:1px solid rgba(255,255,255,.35);
+        display:grid;place-items:center;color:#fff;background:rgba(255,255,255,.12);backdrop-filter:blur(4px);cursor:pointer; }
+
+      .hero{ display:grid; place-items:center; gap:8px; color:#fff; text-align:center; }
+      .emblem{ width:88px;height:88px;border-radius:999px;display:grid;place-items:center;
+        background:conic-gradient(from 160deg,#1fb66a,#1e9bff); box-shadow:0 4px 24px rgba(0,0,0,.15); }
+      .emblem>div{ width:78px;height:78px;border-radius:999px;background:#fff;display:grid;place-items:center; }
+      .title{ font-size:22px; font-weight:800; }
+      .subtle{ opacity:.85; }
+
+      .meter{ display:grid; gap:6px; justify-items:center; color:#fff; }
+      /* อยากให้กราฟเล็กลง ปรับ width สองบรรทัดนี้ได้เลย เช่น 60% */
+      .meter .track{ width:72%; height:10px; border-radius:999px; background:rgba(255,255,255,.35); position:relative; overflow:hidden; }
+      .meter .fill{ position:absolute; inset:0; width:0%; background:linear-gradient(90deg,#34d399,#3b82f6);
+        border-radius:999px; transition:width .35s ease; }
+      .meter .row{ width:72%; display:flex; justify-content:space-between; font-weight:700; }
+
+      .sec-title{ color:#fff; font-weight:800; margin-top:4px; }
+      .status-card{ background:#fff; border-radius:16px; padding:12px; box-shadow:var(--shadow); border:1px solid rgba(255,255,255,.25); }
+      .item{ display:flex; align-items:center; justify-content:space-between; padding:14px 8px; border-top:1px solid #e8eef0; }
+      .item:first-child{ border-top:0; }
+      .lh{ display:flex; gap:10px; align-items:center; }
+      .ic{ width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:#e8f7ed;color:#16a34a; }
+      .val{ font-weight:800; color:#0f172a; }
+      .muted-dot{ width:8px;height:8px;background:#bee3bf;border-radius:999px;display:inline-block;margin:8px auto 0; }
+
+      .pill-large{ background:rgba(255,255,255,.65); border:1px solid rgba(0,0,0,.06);
+        border-radius:16px; padding:16px; text-align:center; font-weight:800; color:#64748b; }
+
+      .tabbar{ position:fixed; left:0; right:0; bottom:0; padding:12px 16px 20px; display:grid; place-items:center; }
+      .tab{ width:min(92%,420px); background:#fff; border-radius:20px; display:flex; gap:8px; justify-content:space-between;
+        padding:10px 14px; border:1px solid #e7eef2; box-shadow:0 10px 20px rgba(0,0,0,.06); }
+      .tab>div{ flex:1; text-align:center; padding:8px 6px; border-radius:14px; font-weight:700; color:#64748b;
+        display:grid; gap:4px; place-items:center; }
+      .tab .active{ background:rgba(16,185,129,.1); color:#16a34a; }
+
+      /* โซนดีบัก/เดิม — ซ่อนไว้ไม่ให้กวน UI */
+      .admin-tools{ display:none; }
+      .log{ display:none; white-space:pre-wrap; word-break:break-word; }
+    </style>
   </head>
   <body>
-    <div id="app" class="container">
+    <main id="app" class="screen">
       <div class="card">Loading…</div>
-    </div>
+    </main>
 
     <script>
     window.addEventListener('DOMContentLoaded', async () => {
       const LIFF_ID = '2008085765-YDwJrxy9';
       const FIREBASE_PROGRESS_URL = 'https://getprogress-iyipepekja-as.a.run.app';
 
-      const $ = (id) => document.getElementById(id);
       const root = document.getElementById('app') || document.body;
+      const $ = (sel) => document.querySelector(sel);
 
-      const showError = (err) => {
-        console.error(err);
+      const showError = (err, where='') => {
+        console.error(where || 'ERR', err);
         const msg = (typeof err === 'string') ? err : (err?.message || JSON.stringify(err));
-        root.insertAdjacentHTML('beforeend', `<pre class="log" style="background:#0b1020;color:#cbd5e1">ERROR: ${msg}</pre>`);
+        root.insertAdjacentHTML('beforeend', `<pre class="log">ERROR${where?`(${where})`:''}: ${msg}</pre>`);
       };
 
       try {
         await liff.init({ liffId: LIFF_ID });
+        if (!liff.isLoggedIn()) { liff.login({ scope:['openid','profile','email'], prompt:'consent' }); return; }
 
-        if (!liff.isLoggedIn()) {
-          liff.login({ scope: ['openid','profile','email'], prompt: 'consent' });
-          return;
-        }
-
-        // ล้าง ?code=... ถ้าถูก redirect กลับมา
+        // ล้าง ?code= หลัง redirect
         const qs = new URLSearchParams(location.search);
         if (qs.get('code')) {
-          const redirectUri = qs.get('liffRedirectUri')
-            ? decodeURIComponent(qs.get('liffRedirectUri'))
-            : (location.origin + location.pathname);
+          const redirectUri = qs.get('liffRedirectUri') ? decodeURIComponent(qs.get('liffRedirectUri')) : (location.origin + location.pathname);
           history.replaceState({}, '', redirectUri);
         }
 
-        // ใช้โทเคนจาก LIFF โดยตรง
+        // เก็บ token สำหรับ backend proxy
         const idToken = liff.getIDToken();
         const accessToken = liff.getAccessToken();
         if (idToken) sessionStorage.setItem('line_id_token', idToken);
         if (accessToken) sessionStorage.setItem('line_access_token', accessToken);
 
-        function buildAuthHeaders() {
-          const storedIdToken = sessionStorage.getItem('line_id_token') || liff.getIDToken();
-          const storedAccess  = sessionStorage.getItem('line_access_token') || liff.getAccessToken();
-          const h = { 'Content-Type': 'application/json' };
-          if (storedIdToken && storedIdToken.includes('.')) {
-            h['x-line-id-token'] = storedIdToken;
-          } else if (storedAccess) {
-            h['x-line-access-token'] = storedAccess;
-          } else {
-            throw new Error('No LINE token available. Please login again.');
-          }
+        const buildAuthHeaders = () => {
+          const t1 = sessionStorage.getItem('line_id_token') || liff.getIDToken();
+          const t2 = sessionStorage.getItem('line_access_token') || liff.getAccessToken();
+          const h = { 'Content-Type':'application/json' };
+          if (t1 && t1.includes('.')) h['x-line-id-token'] = t1;
+          else if (t2) h['x-line-access-token'] = t2;
+          else throw new Error('No LINE token. Please login again.');
           return h;
-        }
-
-        async function authedGet(url) {
+        };
+        const authedGet = async (url) => {
           const r = await fetch(url, { headers: buildAuthHeaders() });
           const t = await r.text(); let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
           if (!r.ok || j.error) throw new Error(j.error || t);
           return j;
-        }
-        async function authedPost(url, body) {
+        };
+        const authedPost = async (url, body) => {
           const r = await fetch(url, { method:'POST', headers: buildAuthHeaders(), body: JSON.stringify(body||{}) });
           const t = await r.text(); let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
           if (!r.ok || j.errors) throw new Error(j.errors ? JSON.stringify(j.errors) : t);
           return j;
-        }
+        };
 
-        // ===== UI (ไม่มี <style> ฝังใน JS แล้ว ใช้คลาสจาก finh-theme.css) =====
+        /* ========= สร้าง UI ========= */
         root.innerHTML = `
-          <div class="card user">
-            <img id="userAvatar" class="avatar" alt="avatar">
-            <div>
-              <div id="userName" style="font-weight:700">—</div>
-              <div class="muted">ID: <span id="userId" class="uid">—</span></div>
-              <div class="muted" id="userEmailWrap" style="display:none;">Email: <span id="userEmail" class="pill">—</span></div>
-            </div>
-            <div class="right">
-              <button id="copyBtn" class="linkish" title="Copy userId">Copy ID</button>
-              <button id="logoutBtn" class="linkish">Logout</button>
-            </div>
+          <div class="topbar">
+            <div>Maturity Level</div>
+            <button id="switchBtn" class="iconbtn" title="Switch Device" aria-label="switch">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="7 7 17 7 17 17"></polyline><line x1="7" y1="17" x2="17" y2="7"></line>
+              </svg>
+            </button>
           </div>
 
-          <div class="row mt-10">
-            <label>Device:
-              <select id="deviceSelect" class="select"></select>
-            </label>
-            <button id="refreshBtn" class="button">Refresh</button>
-            <span id="status" class="muted"></span>
-          </div>
+          <section class="hero">
+            <div class="emblem"><div>
+              <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="1.6">
+                <path d="M12 22c4.97 0 9-4.03 9-9 0-6-5-10-10-10H5v7c0 5 4.03 12 7 12Z" fill="#e8f7ed" stroke="none"/>
+                <path d="M12 6v12M9 13h6"/>
+              </svg>
+            </div></div>
+            <div class="title">Peak Protein</div>
+            <div class="subtle">Level <span id="growthLevel">-</span></div>
+          </section>
 
-          <div class="card" id="growthCard">
+          <section class="meter">
+            <div class="track"><span id="growthBar" class="fill"></span></div>
             <div class="row">
-              <div class="progress flex-1">
-                <div class="bar"><span id="growthBar"></span></div>
-                <div class="pct"><span id="growthPct">—</span>%</div>
-              </div>
-              <div>Level: <span id="growthLevel" class="level">—</span></div>
+              <div class="subtle"></div>
+              <div class="subtle"><span id="growthPct">0</span>%</div>
             </div>
-            <div class="row muted">
-              <div>Status: <span id="growthGood">—</span></div>
-              <div>Updated: <span id="growthUpdated">—</span></div>
+          </section>
+
+          <div>
+            <div class="sec-title">Status</div>
+            <div class="status-card">
+              <div class="item"><div class="lh"><span class="ic">🍃</span> Chlorophyll</div><div class="val" id="vChl">—</div></div>
+              <div class="item"><div class="lh"><span class="ic">💧</span> Soil pH</div><div class="val" id="vPh">—</div></div>
+              <div class="item"><div class="lh"><span class="ic">🌡️</span> Temp</div><div class="val" id="vTemp">—</div></div>
+              <div class="item"><div class="lh"><span class="ic">⚡</span> Soil EC</div><div class="val" id="vEc">—</div></div>
             </div>
           </div>
 
-          <pre id="out" class="log">—</pre>
+          <span class="muted-dot"></span>
+          <div id="cta" class="pill-large">Not Ready Yet</div>
+
+          <!-- tools เดิม (ซ่อน) -->
+          <div class="admin-tools">
+            <div class="row mt-10">
+              <label>Device: <select id="deviceSelect" class="select"></select></label>
+              <button id="refreshBtn" class="button">Refresh</button>
+              <span id="status" class="muted"></span>
+            </div>
+            <pre id="out" class="log">—</pre>
+          </div>
+
+          <nav class="tabbar">
+            <div class="tab">
+              <div class="active"><div>🌱</div><div>Maturity</div></div>
+              <div><div>⚙️</div><div>Control</div></div>
+            </div>
+          </nav>
         `;
 
-        // ----- แสดงโปรไฟล์ LINE -----
-        async function renderUser() {
-          const profile = await liff.getProfile();          // displayName, userId, pictureUrl
-          const decoded = liff.getDecodedIDToken();         // ถ้ามี scope email
-          const email   = decoded && decoded.email;
+        // ===== DOM refs (หลังจาก innerHTML) =====
+        const sel = $('#deviceSelect');
+        const statusEl = $('#status');
+        const out = $('#out');
 
-          $('userName').textContent = profile.displayName || '—';
-          $('userId').textContent   = profile.userId || '—';
-          const av = $('userAvatar');
-          av.src = profile.pictureUrl || '';
-          av.alt = profile.displayName || 'avatar';
+        const growthBar = $('#growthBar');
+        const growthPct = $('#growthPct');
+        const growthLevel = $('#growthLevel');
+        const cta = $('#cta');
 
-          if (email) {
-            $('userEmail').textContent = email;
-            $('userEmailWrap').style.display = '';
-          } else {
-            $('userEmailWrap').style.display = 'none';
+        const switchBtn = $('#switchBtn');
+
+        // ===== helpers =====
+        const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+        const levelFromPercent = (p)=> (p>=100?'Ready!': p>=75?'3': p>=50?'2':'1');
+        const pick = (values, keys, fb='—') => { for (const k of keys) if (values && values[k]!=null) return values[k]; return fb; };
+
+        // ===== devices =====
+        let deviceId = null;
+        try {
+          const resp = await authedGet('/api/devices');
+          const list = Array.isArray(resp?.devices) ? resp.devices : [];
+          if (sel) {
+            sel.innerHTML = '';
+            list.forEach(d => {
+              const op = document.createElement('option');
+              op.value = d.deviceId; op.textContent = d.name || d.deviceId;
+              sel.appendChild(op);
+            });
           }
-
-          $('copyBtn').onclick = async () => {
-            try { await navigator.clipboard.writeText(profile.userId || ''); } catch {}
-          };
-          $('logoutBtn').onclick = () => { liff.logout(); location.reload(); };
+          const saved = localStorage.getItem('deviceId');
+          if (saved && (sel && [...sel.options].some(o=>o.value===saved))) {
+            if (sel) sel.value = saved;
+            deviceId = saved;
+          } else {
+            deviceId = sel?.value || list[0]?.deviceId || null;
+          }
+          if (deviceId) localStorage.setItem('deviceId', deviceId);
+        } catch(e){
+          showError(e, '/api/devices');
+          // ถ้าดึงรายการไม่ได้ ลองใช้ที่เคยเลือกไว้
+          const saved = localStorage.getItem('deviceId');
+          if (saved) deviceId = saved;
         }
-        await renderUser();
 
-        const sel = $('deviceSelect'), out = $('out'), statusEl = $('status');
-        const growthBar = $('growthBar'), growthPct = $('growthPct'),
-              growthLevel = $('growthLevel'), growthGood = $('growthGood'),
-              growthUpdated = $('growthUpdated');
+        if (switchBtn) switchBtn.onclick = () => {
+          if (!sel || !sel.options.length) { alert('No device list.'); return; }
+          const input = prompt('Switch deviceId:', sel.value || '');
+          if (input && [...sel.options].some(o=>o.value===input)) {
+            sel.value = input; localStorage.setItem('deviceId', input); deviceId = input; refresh(); loadGrowth();
+          } else if (input) { alert('ไม่พบ deviceId ในรายการ'); }
+        };
 
-        // โหลดรายการอุปกรณ์
-        const { devices } = await authedGet('/api/devices');
-        devices.forEach(d => {
-          const op = document.createElement('option');
-          op.value = d.deviceId; op.textContent = d.name || d.deviceId;
-          sel.appendChild(op);
-        });
-        const saved = localStorage.getItem('deviceId');
-        if (saved && [...sel.options].some(o => o.value === saved)) sel.value = saved;
-        sel.onchange = async () => {
+        if (sel) sel.onchange = async () => {
           localStorage.setItem('deviceId', sel.value);
+          deviceId = sel.value;
           await refresh();
           await loadGrowth();
         };
 
-        // Debug shadow
+        // ===== shadow =====
         const Q_SHADOW = `query($deviceid:String!){ shadow(deviceid:$deviceid){ deviceid rev modified data } }`;
         async function refresh() {
+          if (!deviceId) return;
           try {
-            statusEl.textContent = 'Loading…';
-            const r = await authedPost('/api/gql', { query: Q_SHADOW, variables: { deviceid: sel.value } });
-            out.textContent = JSON.stringify(r.data, null, 2);
-            statusEl.textContent = 'Updated: ' + new Date().toISOString();
-          } catch (e) { statusEl.textContent = 'Failed'; showError(e); }
-        }
+            if (statusEl) statusEl.textContent = 'Loading…';
+            const r = await authedPost('/api/gql', { query: Q_SHADOW, variables: { deviceid: deviceId } });
+            if (out) out.textContent = JSON.stringify(r.data, null, 2);
 
-        function normalizeLevel(lvl) {
-          if (typeof lvl === 'number') return ['1','2','3','4'][Math.max(0, Math.min(3, lvl))] || String(lvl);
-          if (typeof lvl === 'string' && /^\d+$/.test(lvl)) {
-            const n = parseInt(lvl, 10);
-            return ['1','2','3','4'][Math.max(0, Math.min(3, n))] || lvl;
+            const values = r?.data?.shadow?.data || {};
+            const chl  = pick(values, ['Chlorophyll','Water_Chl-a','Soil_Chl-a','chl','Chl','Weather_light_par']);
+            const ph   = pick(values, ['Soil_pH','Water_pH','pH']);
+            const temp = pick(values, ['Soil_temperature','Temp_out','Temperature_in','Weather_Temperature','Water_EC_Temp']);
+            const ec   = pick(values, ['Soil_EC','EC','Water_EC']);
+
+            const setTxt = (id, v) => { const el=$(id); if (!el) return; el.textContent = (typeof v==='number') ? v : (v ?? '—'); };
+
+            setTxt('#vChl', (typeof chl==='number') ? chl.toFixed(1) : chl);
+            setTxt('#vPh',  (typeof ph==='number')  ? ph.toFixed(2)  : ph);
+            setTxt('#vTemp',(typeof temp==='number')? `${temp.toFixed(1)}°C` : temp);
+            setTxt('#vEc',  ec);
+
+            if (statusEl) statusEl.textContent = 'Updated: ' + new Date().toISOString();
+          } catch (e) {
+            if (statusEl) statusEl.textContent = 'Failed';
+            showError(e, '/api/gql');
           }
-          return String(lvl || '—');
-        }
-        function pickUpdated(data) {
-          if (data.updatedAtIso) return data.updatedAtIso;
-          const u = data.updatedAt;
-          if (!u) return '—';
-          if (typeof u === 'string') return u;
-          if (u && typeof u === 'object' && '_seconds' in u) return new Date(u._seconds * 1000).toISOString();
-          return String(u);
         }
 
-        // โหลด %/Level
+        // ===== progress =====
         async function loadGrowth() {
+          if (!deviceId) return;
           try {
-            const url = `${FIREBASE_PROGRESS_URL}?deviceId=${encodeURIComponent(sel.value)}`;
+            const url = `${FIREBASE_PROGRESS_URL}?deviceId=${encodeURIComponent(deviceId)}`;
             const r = await fetch(url, { cache: 'no-store' });
             const data = await r.json();
             if (!r.ok || data.error) throw new Error(data.error || JSON.stringify(data));
 
-            const pct = typeof data.percent === 'number' ? Math.max(0, Math.min(100, data.percent)) : null;
-            const lvl = normalizeLevel(data.level);
-            const good = ('Status' in data) ? !!data.Status : !!data.goodNow;
-            const updated = pickUpdated(data);
-
-            growthPct.textContent = pct != null ? pct.toFixed(1) : '—';
-            growthBar.style.width = pct != null ? `${pct}%` : '0%';
-            growthLevel.textContent = lvl;
-            growthGood.textContent = good ? 'OK' : 'NOT OK';
-            growthGood.className = good ? 'status-ok' : 'status-bad';
-            growthUpdated.textContent = updated;
+            const pct = clamp(Math.round(Number(data.percent||0)), 0, 100);
+            if (growthPct) growthPct.textContent = String(pct);
+            if (growthBar) growthBar.style.width = pct + '%';
+            if (growthLevel) growthLevel.textContent = levelFromPercent(pct);
+            if (cta) cta.textContent = pct >= 100 ? 'Ready!' : 'Not Ready Yet';
           } catch (e) {
-            growthPct.textContent = '—';
-            growthBar.style.width = '0%';
-            growthLevel.textContent = '—';
-            growthGood.textContent = '—';
-            growthGood.className = '';
-            growthUpdated.textContent = '—';
-            showError(e);
+            if (growthPct) growthPct.textContent = '0';
+            if (growthBar) growthBar.style.width = '0%';
+            if (growthLevel) growthLevel.textContent = '-';
+            if (cta) cta.textContent = 'Not Ready Yet';
+            showError(e, 'progress');
           }
         }
 
-        $('refreshBtn').onclick = async () => { await refresh(); await loadGrowth(); };
+        const btn = $('#refreshBtn');
+        if (btn) btn.onclick = async () => { await refresh(); await loadGrowth(); };
 
         await refresh();
         await loadGrowth();
         setInterval(loadGrowth, 60000);
 
       } catch (e) {
-        showError(e);
+        showError(e, 'BOOT');
       }
     });
     </script>
