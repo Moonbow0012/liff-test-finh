@@ -4,11 +4,13 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>GAqP Self-Audit (Wolffia)</title>
+
+  <!-- SDKs -->
   <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.13.1/firebase-auth-compat.js"></script>
-  <!-- NEW: Chart.js สำหรับวาด Pie -->
-  <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+
   <style>
     body { font-family: system-ui, sans-serif; background:#f7faf9; color:#0f172a; }
     .hdr { display:flex; gap:12px; align-items:center; padding:12px 16px; background:#fff; border-bottom:1px solid #e5e7eb; position:sticky; top:0; z-index:10; }
@@ -20,6 +22,7 @@
     input[type="text"] { width:100%; padding:10px; border:1px solid #d1d5db; border-radius:10px; background:#fff; }
     .btn { appearance:none; border:1px solid #0ea5e9; background:#0ea5e9; color:#fff; border-radius:10px; padding:10px 14px; cursor:pointer; }
     .btn.outline { background:#fff; border-color:#94a3b8; color:#334155; }
+    .btn:disabled { opacity:.6; cursor:not-allowed; }
     .muted { color:#64748b; font-size:12px; }
     .sec { border:1px solid #e2e8f0; border-radius:12px; margin:10px 0; overflow:hidden; }
     .sec-hdr { background:#f1f5f9; padding:10px 12px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; }
@@ -30,10 +33,12 @@
     .q-grid { display:grid; grid-template-columns: 1fr; gap:8px; }
     .sticky-foot { position:fixed; left:0; right:0; bottom:0; background:#ffffffd9; backdrop-filter: blur(6px);
       border-top:1px solid #e5e7eb; padding:10px 12px; display:flex; justify-content:center; }
-    /* NEW: การ์ดผลลัพธ์ */
-    .result-head { display:flex; justify-content:space-between; align-items:center; gap:12px; }
-    .kpi { display:flex; gap:12px; flex-wrap:wrap; }
-    .kpi > div { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:8px 12px; }
+
+    /* ผลลัพธ์ */
+    #resultCard h3 { margin: 0 0 8px 0; }
+    #resultStats { display:flex; gap:12px; flex-wrap:wrap; margin-top:8px; }
+    #resultStats .pill { background:#f1f5f9; border:1px solid #e2e8f0; padding:6px 10px; border-radius:999px; font-size:12px; }
+    #resultMsg { margin-top:8px; font-size:12px; color:#64748b; }
   </style>
 </head>
 <body>
@@ -47,7 +52,7 @@
 
   <div class="wrap">
     <!-- ผู้ใช้ -->
-    <section class="card">
+    <section id="userCard" class="card">
       <div class="row" style="align-items:center; justify-content:space-between;">
         <div class="row" style="align-items:center;">
           <img id="uimg" class="avatar" alt="avatar" style="width:40px;height:40px;border-radius:999px;border:1px solid #e5e7eb;object-fit:cover"/>
@@ -61,7 +66,7 @@
     </section>
 
     <!-- ข้อมูลฟาร์ม -->
-    <section class="card" id="farmCard">
+    <section class="card">
       <div class="row">
         <label style="flex:1">ฟาร์ม (farmId)<br><input name="farmId" id="farmId" placeholder="เช่น farm-1"></label>
         <label style="flex:1">แปลง (plotId)<br><input name="plotId" id="plotId" placeholder="เช่น P01"></label>
@@ -77,26 +82,22 @@
       </div>
     </form>
 
-    <!-- NEW: การ์ดสรุปผลหลังส่ง -->
+    <!-- สรุปผล (แสดงหลังส่ง) -->
     <section id="resultCard" class="card" style="display:none">
-      <div class="result-head">
-        <div>
-          <div style="font-weight:700">สรุปผลการประเมิน</div>
-          <div class="muted" id="resultSummary">—</div>
-        </div>
-        <button class="btn outline" id="closeBtn">ปิดหน้าต่าง</button>
+      <h3>สรุปผลแบบประเมิน</h3>
+      <div style="max-width:520px;margin:10px auto;">
+        <canvas id="pieCanvas" height="260"></canvas>
       </div>
-      <div class="kpi" style="margin:12px 0">
-        <div><b id="kPass">ผ่าน: 0</b></div>
-        <div><b id="kFail">ไม่ผ่าน: 0</b></div>
-        <div><b id="kPct">ผ่าน (%) : 0%</b></div>
+      <div id="resultStats"></div>
+      <div id="resultMsg" class="muted"></div>
+      <div style="margin-top:12px;display:flex;gap:8px;">
+        <button id="btnNew" class="btn outline">กรอกใหม่</button>
+        <button id="btnClose" class="btn">ปิดหน้าต่าง</button>
       </div>
-      <canvas id="pie" width="380" height="380" style="max-width:100%"></canvas>
-      <div class="muted" style="margin-top:10px">* แสดงผลเฉพาะคำตอบที่เลือก “ผ่าน/ไม่ผ่าน”</div>
     </section>
   </div>
 
-  <div class="sticky-foot" id="footBar">
+  <div class="sticky-foot">
     <button id="submitBtn" class="btn">บันทึกข้อมูล</button>
   </div>
 
@@ -115,11 +116,67 @@ const FIREBASE_CONFIG = {
 const REQUIRED_SCOPE = ['openid','profile','email'];
 const $ = (s)=>document.querySelector(s);
 
-// 11 หมวด
-const SECTIONS = [/* ... เหมือนเดิมของคุณทั้งหมด ... */];
-</script>
+// 11 หมวด (สองช้อยส์—ผ่าน/ไม่ผ่าน)
+const SECTIONS = [
+  { id:1, title:"สถานที่ตั้งฟาร์ม", items:[
+    "พื้นที่ตั้งฟาร์มอยู่ใกล้แหล่งมลพิษหรือแหล่งปนเปื้อน เช่น โรงงานอุตสาหกรรม เกษตรกรรมที่ใช้สารเคมี หรือไม่",
+    "หากพื้นที่มีความเสี่ยง เจ้าของฟาร์มมีมาตรการป้องกันและบันทึกหลักฐานไว้หรือไม่",
+  ]},
+  { id:2, title:"การเตรียมบ่อเพาะเลี้ยง", items:[
+    "บ่อเลี้ยงมีความแข็งแรงและใช้วัสดุหรือโครงสร้างที่ปลอดภัยต่อผู้บริโภคหรือไม่",
+    "มีกระบวนการกำจัดวัชพืชหรือสิ่งแปลกปลอมก่อนเพาะเลี้ยงหรือไม่",
+    "หากมีการใช้สารเคมี ผู้ปฏิบัติงานได้ปฏิบัติตามการใช้งานตามฉลากและมีบันทึกการใช้ทุกครั้งหรือไม่",
+  ]},
+  { id:3, title:"การจัดการน้ำ", items:[
+    "น้ำที่ใช้สำหรับการเลี้ยงมาจากแหล่งที่มาที่มีความเสี่ยงต่อการปนเปื้อนของสารเคมี จุลินทรีย์ก่อโรคหรือไม่",
+    "มีการตรวจวัดคุณภาพน้ำอย่างสม่ำเสมอ (สี กลิ่น ความใส หรือผลแลบ) และบันทึกข้อมูลไว้หรือไม่",
+    "น้ำที่ใช้สำหรับกระบวนการล้างผลผลิต มาจากแหล่งที่มาที่มีความเสี่ยงต่อการปนเปื้อนของสารเคมี จุลินทรีย์ก่อโรคหรือไม่",
+  ]},
+  { id:4, title:"สุขลักษณะภายในฟาร์ม", items:[
+    "มีการจัดการขยะและภาชนะใช้แล้วอย่างเหมาะสมหรือไม่ เช่น การไม่เผา การไม่ใช้ซ้ำ",
+    "มีมาตรการป้องกันสัตว์พาหะ เช่น หนู แมลง สัตว์เลี้ยง หรือไม่",
+    "มีกระบวนการแยกเก็บปัจจัยการผลิตออกจากพื้นที่เก็บผลผลิตหรือไม่",
+  ]},
+  { id:5, title:"การจัดการเพาะเลี้ยง", items:[
+    "ใช้พันธุ์ผำจากแหล่งที่เชื่อถือได้หรือไม่",
+    "มีกระบวนการเฝ้าระวังศัตรูพืช วัชพืชน้ำ และสิ่งแปลกปลอมหรือไม่",
+    "มีการบันทึกความผิดปกติที่เกิดขึ้นในกระบวนการเลี้ยงและการแก้ไขเมื่อพบความผิดปกติหรือไม่",
+  ]},
+  { id:6, title:"ปุ๋ยและธาตุอาหารเสริม", items:[
+    "ใช้ปุ๋ยหรือสาร ธาตุอาหารที่ขึ้นทะเบียนถูกต้องและปลอดภัยหรือไม่",
+    "มีการใช้มูลสัตว์สดในกระบวนการเพาะเลี้ยงหรือไม่",
+    "มีการทำปุ๋ยหมักเองหรือไม่",
+    "มีบันทึกบัญชีรายการปุ๋ยและการใช้ครบถ้วนหรือไม่",
+  ]},
+  { id:7, title:"การจัดการน้ำทิ้งและดินเลน", items:[
+    "มีการปล่อยน้ำทิ้งลงสู่แหล่งน้ำสาธารณะโดยตรงหรือไม่",
+    "มีมาตรการจัดการ/กักเก็บน้ำทิ้งอย่างถูกต้องหรือไม่",
+    "มีกระบวนการกำจัดดินเลนทำอย่างถูกวิธีและไม่ก่อให้เกิดมลภาวะหรือไม่",
+  ]},
+  { id:8, title:"การเก็บเกี่ยวและหลังเก็บเกี่ยว", items:[
+    "ใช้อุปกรณ์เก็บเกี่ยวที่สะอาดและถูกสุขลักษณะหรือไม่",
+    "มีการล้างผำด้วยน้ำสะอาดหลังเก็บเกี่ยวหรือไม่",
+    "มีการวางผลผลิตบนพื้นดินโดยตรงหรือไม่",
+  ]},
+  { id:9, title:"การเก็บรักษาและขนส่ง", items:[
+    "เก็บผลผลิตในที่สะอาด แห้ง และอากาศถ่ายเทหรือไม่",
+    "มีการทำข้อมูลชี้บ่ง เช่น ชื่อผู้ผลิต/แปลง/วันเก็บเกี่ยว ในฟาร์มหรือไม่",
+    "มีกระบวนการขนส่งโดยไม่ทำให้ผลผลิตปนเปื้อนหรือเสียหายหรือไม่",
+  ]},
+  { id:10, title:"ผู้ปฏิบัติงาน", items:[
+    "ผู้ปฏิบัติงานผ่านการอบรมสุขลักษณะส่วนบุคคลหรือไม่",
+    "ผู้ปฏิบัติงานมีความเข้าใจขั้นตอนการเลี้ยงและการเก็บเกี่ยวหรือไม่",
+    "มีหลักฐานการอบรมหรือสอนงานหรือไม่",
+  ]},
+  { id:11, title:"การบันทึกข้อมูลและเอกสาร", items:[
+    "มีบันทึกข้อมูลการใช้ปุ๋ย/สารเคมีหรือไม่",
+    "มีบันทึกความผิดปกติและการแก้ไขหรือไม่",
+    "มีบันทึกการซื้อพันธุ์หรือไม่",
+    "มีบันทึกข้อมูลการเก็บเกี่ยวและขนส่งหรือไม่",
+    "เอกสารทุกอย่างเก็บรักษาอย่างน้อย 3 ปี หรือไม่",
+  ]},
+];
 
-<script>
 function renderSections(){
   const host = document.querySelector("#sections");
   host.innerHTML = "";
@@ -166,56 +223,7 @@ function renderSections(){
   if (first) first.style.display = "block";
 }
 
-// ==== NEW: Summary + Chart helpers ====
-function summarizeAudit(auditAnswers) {
-  const out = { pass:0, fail:0, total:0, passPct:0, failPct:0 };
-  for (const x of (auditAnswers||[])) {
-    if (x?.result === "PASS") out.pass++;
-    else if (x?.result === "FAIL") out.fail++;
-  }
-  out.total = out.pass + out.fail;
-  if (out.total > 0) {
-    out.passPct = Math.round((out.pass / out.total) * 100);
-    out.failPct = 100 - out.passPct;
-  }
-  return out;
-}
-
-let pieChart = null;
-function drawPie(passCount, failCount) {
-  const ctx = document.getElementById("pie").getContext("2d");
-  // destroy ก่อนวาดใหม่
-  if (pieChart) { pieChart.destroy(); pieChart = null; }
-
-  const total = passCount + failCount;
-
-  if (total === 0) {
-    // เคสไม่มีคำตอบเลย — วาดชิ้นเดียวเพื่อให้กราฟขึ้น
-    pieChart = new Chart(ctx, {
-      type: "pie",
-      data: {
-        labels: ["ยังไม่มีคำตอบ"],
-        datasets: [{ data: [1] }]
-      },
-      options: { responsive:true, plugins:{ legend:{ position:"bottom" } } }
-    });
-    return;
-  }
-
-  const passPct = Math.round((passCount / total) * 100);
-  const failPct = 100 - passPct;
-
-  pieChart = new Chart(ctx, {
-    type: "pie",
-    data: {
-      labels: [`ผ่าน ${passPct}%`, `ไม่ผ่าน ${failPct}%`],
-      datasets: [{ data: [passCount, failCount] }]
-    },
-    options: { responsive:true, plugins:{ legend:{ position:"bottom" } } }
-  });
-}
-
-// ==== Auth helpers (เหมือนเดิม) ====
+// ==== Auth helpers ====
 async function getFreshLineIdToken(){
   if (!liff.isLoggedIn()) {
     liff.login({ scope: REQUIRED_SCOPE, redirectUri: location.href });
@@ -244,6 +252,7 @@ async function exchangeToFirebaseToken(lineIdToken){
   return js.firebaseToken;
 }
 
+// ==== เก็บคำตอบ ====
 function collectAuditData(){
   const farmId = (document.querySelector("#farmId").value || "").trim() || null;
   const plotId = (document.querySelector("#plotId").value || "").trim() || null;
@@ -258,9 +267,88 @@ function collectAuditData(){
   return { farmId, plotId, answers };
 }
 
-// ==== Main ====
+// ==== สรุปผล & แสดงกราฟ ====
+function summarizeAnswers(answers){
+  let pass=0, fail=0, na=0;
+  for (const a of answers) {
+    if (a.result === "PASS") pass++;
+    else if (a.result === "FAIL") fail++;
+    else na++;
+  }
+  const total = answers.length || 0;
+  const pctPass = total ? Math.round((pass/total)*100) : 0;
+  const pctFail = total ? Math.round((fail/total)*100) : 0;
+  const pctNA   = total ? Math.max(0, 100 - pctPass - pctFail) : 0;
+  return { pass, fail, na, total, pctPass, pctFail, pctNA };
+}
+
+let _pieInstance = null;
+function showResult(summary, issueId=null, backendErrorMsg=null){
+  // ซ่อนฟอร์ม + ปุ่มส่ง
+  document.querySelector("#auditForm").style.display = "none";
+  document.querySelector(".sticky-foot").style.display = "none";
+
+  // อัปเดตสถิติ
+  const statsHost = document.querySelector("#resultStats");
+  statsHost.innerHTML = `
+    <span class="pill">ผ่าน: ${summary.pass}/${summary.total} (${summary.pctPass}%)</span>
+    <span class="pill">ไม่ผ่าน: ${summary.fail}/${summary.total} (${summary.pctFail}%)</span>
+    <span class="pill">ยังไม่ตอบ: ${summary.na}</span>
+  `;
+
+  const msg = backendErrorMsg
+    ? `* ไม่สามารถบันทึกข้อมูลไปยังระบบได้: ${backendErrorMsg}`
+    : issueId
+      ? `บันทึกข้อมูลเรียบร้อย (รหัส: ${issueId})`
+      : `แสดงสรุปจากคำตอบบนหน้านี้`;
+  document.querySelector("#resultMsg").textContent = msg;
+
+  // วาด pie
+  const ctx = document.getElementById("pieCanvas").getContext("2d");
+  if (_pieInstance) { _pieInstance.destroy(); }
+  _pieInstance = new Chart(ctx, {
+    type: "pie",
+    data: {
+      labels: ["ผ่าน", "ไม่ผ่าน", "ยังไม่ตอบ"],
+      datasets: [{
+        data: [summary.pass, summary.fail, summary.na]
+      }]
+    },
+    options: {
+      plugins: {
+        legend: { position: "bottom" },
+        tooltip: { callbacks: {
+          label: (c)=> `${c.label}: ${c.raw} ข้อ`
+        }}
+      }
+    }
+  });
+
+  // แสดงการ์ดผลลัพธ์
+  document.querySelector("#resultCard").style.display = "block";
+}
+
+// reset หน้าฟอร์ม (ไม่ลบค่า input ฟาร์ม/แปลงเพื่อกรอกซ้ำง่าย)
+function resetForm(){
+  // เคลียร์คำตอบ radio
+  document.querySelectorAll('input[type="radio"]').forEach(r=> r.checked = false);
+  document.querySelector("#consent").checked = false;
+
+  document.querySelector("#resultCard").style.display = "none";
+  document.querySelector("#auditForm").style.display = "block";
+  document.querySelector(".sticky-foot").style.display = "flex";
+}
+
+// ==== main ====
 window.addEventListener('DOMContentLoaded', async () => {
   renderSections();
+
+  // ปุ่มผลลัพธ์
+  document.querySelector("#btnNew").onclick = resetForm;
+  document.querySelector("#btnClose").onclick = ()=> {
+    if (liff.isInClient()) liff.closeWindow();
+    else window.close();
+  };
 
   try {
     await liff.init({ liffId: LIFF_ID });
@@ -278,21 +366,16 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (!firebase.apps?.length) firebase.initializeApp(FIREBASE_CONFIG);
     await firebase.auth().signInWithCustomToken(firebaseToken);
 
-    // ปุ่มปิดหน้าต่าง (ให้ลูกค้ากดเอง)
-    document.querySelector("#closeBtn").onclick = ()=>{
-      if (liff.isInClient()) liff.closeWindow();
-      else window.close();
-    };
-
     // ปุ่มบันทึก
-    document.querySelector("#submitBtn").onclick = async ()=>{
+    const btn = document.querySelector("#submitBtn");
+    btn.onclick = async ()=>{
       try{
         if (!document.querySelector("#consent").checked) return alert("กรุณายินยอมก่อนส่ง");
+
+        btn.disabled = true; btn.textContent = "กำลังบันทึก...";
+
         const { farmId, plotId, answers } = collectAuditData();
-
-        // Firebase ID token สำหรับ backend
         const fbIdToken = await firebase.auth().currentUser.getIdToken(true);
-
         const payload = {
           farmId, plotId,
           description: "GAqP self-audit (data-only)",
@@ -300,33 +383,32 @@ window.addEventListener('DOMContentLoaded', async () => {
           auditAnswers: answers
         };
 
-        // บันทึกไป backend
-        const r = await fetch(CREATE_URL, {
-          method:"POST",
-          headers: { "Content-Type":"application/json", "Authorization": "Bearer " + fbIdToken },
-          body: JSON.stringify(payload)
-        });
-        const js = await r.json().catch(()=> ({}));
-        if (!r.ok) throw new Error(js?.error || "บันทึกไม่สำเร็จ");
+        let issueId = null;
+        try {
+          const r = await fetch(CREATE_URL, {
+            method:"POST",
+            headers: { "Content-Type":"application/json", "Authorization": "Bearer " + fbIdToken },
+            body: JSON.stringify(payload)
+          });
+          const js = await r.json().catch(()=> ({}));
+          if (!r.ok) throw new Error(js?.error || r.statusText || "บันทึกไม่สำเร็จ");
+          issueId = js.issueId || null;
+        } catch (e) {
+          // ถ้าบันทึกพัง ก็ยังสรุปผลให้ผู้ใช้เห็น
+          const sum = summarizeAnswers(answers);
+          showResult(sum, null, e.message || "NETWORK/ERROR");
+          return;
+        } finally {
+          btn.disabled = false; btn.textContent = "บันทึกข้อมูล";
+        }
 
-        // NEW: สรุปผล + วาดกราฟ แล้วแสดงการ์ดผลลัพธ์
-        const stats = summarizeAudit(answers);
-        drawPie(stats.pass, stats.fail);
-        document.getElementById("kPass").textContent = `ผ่าน: ${stats.pass}`;
-        document.getElementById("kFail").textContent = `ไม่ผ่าน: ${stats.fail}`;
-        document.getElementById("kPct").textContent  = `ผ่าน (%): ${stats.passPct}%`;
-        document.getElementById("resultSummary").textContent =
-          `บันทึกสำเร็จ (รหัส ${js.issueId || '-'}) • รวม ${stats.total} ข้อ`;
-
-        // ซ่อนฟอร์ม & แสดงผล
-        document.getElementById("auditForm").style.display = "none";
-        document.getElementById("farmCard").style.display = "none";
-        document.getElementById("footBar").style.display  = "none";
-        document.getElementById("resultCard").style.display = "block";
+        const sum = summarizeAnswers(answers);
+        showResult(sum, issueId, null);
 
       }catch(e){
         console.error(e);
         alert(e.message || "บันทึกไม่สำเร็จ");
+        btn.disabled = false; btn.textContent = "บันทึกข้อมูล";
       }
     };
 
