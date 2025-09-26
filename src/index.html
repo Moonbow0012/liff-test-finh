@@ -380,22 +380,41 @@
     statusEl.textContent = `Updated: ${updated}`;
   }
 
+    // --- ADD: helpers for LIFF login flow ---
+  function stripRedirectUri() { 
+    // ให้ URL สะอาด (กัน loop จาก ?code / ?liffRedirectUri)
+    return location.origin + location.pathname; 
+  }
+
+  async function ensureLogin() {
+    if (liff.isLoggedIn()) return;
+
+    const redirectUri = stripRedirectUri();
+
+    if (liff.isInClient()) {
+      // อยู่ในแอป LINE → เรียกแบบไม่ใส่ scope/prompt/redirectUri
+      // เพื่อให้ consent (“Allow”) โผล่ในเว็บวิวของ LINE เอง
+      liff.login();
+    } else {
+      // นอกแอป → ใช้ external browser + redirectUri สะอาด
+      liff.login({ withLoginOnExternalBrowser: true, redirectUri });
+    }
+
+    // หยุดการรันต่อจนกว่า redirect กลับมา
+    return new Promise(()=>{});
+  }
+
   window.addEventListener('DOMContentLoaded', async () => {
     try{
       await liff.init({ liffId: LIFF_ID });
-      if (!liff.isLoggedIn()){
-        liff.login({ scope:['openid','profile','email'], prompt:'consent' });
-        return;
-      }
+      await ensureLogin();
 
-      // clear ?code
-      const qs = new URLSearchParams(location.search);
-      if (qs.get('code')){
-        const redirectUri = qs.get('liffRedirectUri')
-          ? decodeURIComponent(qs.get('liffRedirectUri'))
-          : (location.origin + location.pathname);
-        history.replaceState({}, '', redirectUri);
-      }
+{
+  const qs = new URLSearchParams(location.search);
+  if (qs.get('code') || qs.get('liffRedirectUri')) {
+    history.replaceState({}, '', stripRedirectUri());
+  }
+}
 
       // cache token
       const idToken = liff.getIDToken();
