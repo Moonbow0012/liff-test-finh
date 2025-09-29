@@ -289,61 +289,86 @@ function updateSeries(deviceId, ph, temp){
 }
 function drawSpark(deviceId){
   const c = document.getElementById('spark'); if (!c) return;
-  const dpr = window.devicePixelRatio || 1;
-  const cssW = c.clientWidth || 600, cssH = 180;
-  c.width = Math.floor(cssW * dpr); c.height = Math.floor(cssH * dpr);
+
+  // ----- ขนาดที่ถูกต้องตาม CSS + DPI (ป้องกันตัวหนังสือบวม/ซ้อน) -----
+  const rect = c.getBoundingClientRect();
+  const cssW = Math.max(1, Math.floor(rect.width));
+  const cssH = Math.max(1, Math.floor(rect.height));
+  const dpr  = Math.max(1, Math.floor(window.devicePixelRatio || 1));
+
+  if (c.width  !== cssW*dpr) c.width  = cssW*dpr;
+  if (c.height !== cssH*dpr) c.height = cssH*dpr;
+
   const ctx = c.getContext('2d');
-  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.setTransform(1,0,0,1,0,0); // reset
+  ctx.scale(dpr, dpr);           // scale ตาม DPI
   ctx.clearRect(0,0,cssW,cssH);
 
+  // ----- ดึงซีรีส์ -----
   const s = loadSeries(deviceId);
   const n = s.t.length; if (!n) return;
 
-  const pad = {l:36, r:6, t:12, b:18};
+  const pad = { l: 40, r: 10, t: 18, b: 24 };
   const iw = cssW - pad.l - pad.r, ih = cssH - pad.t - pad.b;
   const idxs = [...Array(n).keys()];
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
-  const phVals = s.ph.filter(v=>typeof v==='number');
-  const phMin = phVals.length ? Math.min(5, ...phVals) : 5;
-  const phMax = phVals.length ? Math.max(9, ...phVals) : 9;
+  // ===== สเกลอัตโนมัติ (พร้อม buffer) =====
+  const phVals = s.ph.filter(v => typeof v === 'number');
+  let phMin = phVals.length ? Math.min(...phVals) : 7;
+  let phMax = phVals.length ? Math.max(...phVals) : 7;
+  if (phMax === phMin) { phMax += 0.1; phMin -= 0.1; }
+  const phPad = (phMax - phMin) * 0.15 + 0.1;
+  phMin = clamp(phMin - phPad, 0, 14);
+  phMax = clamp(phMax + phPad, 0.1, 14);
 
-  const tVals = s.temp.filter(v=>typeof v==='number');
-  const tMin = tVals.length ? Math.min(20, ...tVals) : 20;
-  const tMax = tVals.length ? Math.max(35, ...tVals) : 35;
+  const tVals = s.temp.filter(v => typeof v === 'number');
+  let tMin = tVals.length ? Math.min(...tVals) : 25;
+  let tMax = tVals.length ? Math.max(...tVals) : 25;
+  if (tMax === tMin) { tMax += 0.5; tMin -= 0.5; }
+  const tPad = (tMax - tMin) * 0.15 + 0.5;
+  tMin = Math.max(0, tMin - tPad);
+  tMax = tMax + tPad;
 
-  const xAt = i => pad.l + (i/(Math.max(1,n-1))) * iw;
-  const yAt = (val,min,max) => pad.t + (1 - ((val-min)/(max-min || 1))) * ih;
+  const xAt = i => pad.l + (i / Math.max(1, n-1)) * iw;
+  const yAt = (v, min, max) => pad.t + (1 - ((clamp(v,min,max)-min)/(max-min))) * ih;
 
-  // grid
-  ctx.strokeStyle = '#e5efe9'; ctx.lineWidth = 1;
-  for (let g=0; g<=4; g++){ const y = pad.t + g*(ih/4); ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+iw,y); ctx.stroke(); }
+  // ===== grid =====
+  ctx.strokeStyle = 'rgba(255,255,255,.18)';
+  ctx.lineWidth = 1;
+  for (let g=0; g<=4; g++){
+    const y = pad.t + g*(ih/4);
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l+iw, y); ctx.stroke();
+  }
 
-  // pH line (green)
-  ctx.strokeStyle = '#16a34a'; ctx.lineWidth = 2; ctx.beginPath();
-  let moved=false;
-  idxs.forEach(i=>{
-    const v = s.ph[i]; if (typeof v!=='number') return;
-    const x=xAt(i), y=yAt(v,phMin,phMax);
-    if (!moved){ ctx.moveTo(x,y); moved=true; } else ctx.lineTo(x,y);
-  });
-  ctx.stroke();
+  // helper วาดเส้น
+  function drawLine(arr, min, max, color){
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    let moved = false;
+    for (let i=0;i<n;i++){
+      const val = arr[i];
+      if (typeof val !== 'number') continue;
+      const x = xAt(i), y = yAt(val, min, max);
+      if (!moved){ ctx.moveTo(x,y); moved = true; } else ctx.lineTo(x,y);
+    }
+    if (moved) ctx.stroke();
+  }
 
-  // Temp line (blue)
-  ctx.strokeStyle = '#2563eb'; ctx.lineWidth = 2; ctx.beginPath();
-  moved=false;
-  idxs.forEach(i=>{
-    const v = s.temp[i]; if (typeof v!=='number') return;
-    const x=xAt(i), y=yAt(v,tMin,tMax);
-    if (!moved){ ctx.moveTo(x,y); moved=true; } else ctx.lineTo(x,y);
-  });
-  ctx.stroke();
+  // ===== เส้น pH (เขียว) + Temp (น้ำเงิน) =====
+  drawLine(s.ph,   phMin, phMax, '#34d399');
+  drawLine(s.temp, tMin,  tMax,  '#60a5fa');
 
-  // labels
-  ctx.fillStyle = '#4b6a5d'; ctx.font = '12px system-ui';
-  ctx.fillText(`pH ${phMin.toFixed(1)}–${phMax.toFixed(1)}`, pad.l, 12);
-  ctx.textAlign='right';
-  ctx.fillText(`Temp ${tMin.toFixed(0)}–${tMax.toFixed(0)}°C`, pad.l+iw, 12);
+  // ===== ป้ายสเกลด้านบนเล็ก ๆ =====
+  ctx.fillStyle = 'rgba(255,255,255,.75)';
+  ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto';
+  ctx.textAlign = 'left';
+  ctx.fillText(`pH ${phMin.toFixed(1)}–${phMax.toFixed(1)}`, pad.l, pad.t - 4);
+  ctx.textAlign = 'right';
+  ctx.fillText(`Temp ${Math.round(tMin)}–${Math.round(tMax)}°C`, pad.l+iw, pad.t - 4);
 }
+
 
 /* ===================== Dashboard (Desktop) ===================== */
 async function renderDashboard(){
@@ -481,6 +506,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (sel?.value) drawSpark(sel.value);
 
   }catch(e){ showError(e); }
+
+  window.addEventListener('resize', () => {
+  const sel = document.getElementById('deviceSelect');
+  if (sel?.value) drawSpark(sel.value);
+  })
 });
 </script>
 </body>
