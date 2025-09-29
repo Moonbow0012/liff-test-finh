@@ -85,12 +85,11 @@
     <div>
       <h1>Overview</h1>
       <div class="dash-kpis">
-        <div class="dkpi"><small>Water</small><b id="dkpi-water">—</b></div>
-        <div class="dkpi"><small>pH Level</small><b id="dkpi-ph">—</b></div>
-        <div class="dkpi"><small>Temperature</small><b id="dkpi-temp">—</b></div>
+        <div class="dkpi"><small>Water </small><b id="dkpi-water">—</b></div>
+        <div class="dkpi"><small>pH Level </small><b id="dkpi-ph">—</b></div>
+        <div class="dkpi"><small>Temperature </small><b id="dkpi-temp">—</b></div>
       </div>
     </div>
-    <div class="dash-plant" aria-hidden="true"></div>
   </div>
 
   <div class="dash-panels">
@@ -324,10 +323,13 @@
       }
 
       $('refreshBtn').onclick = refreshAll;
-      sel.onchange = async ()=>{
-        localStorage.setItem('deviceId', sel.value || '');
-        await refreshAll();
-      };
+sel.onchange = async ()=>{
+  localStorage.setItem('deviceId', sel.value || '');
+  await refreshAll();                                  // มือถือ/การ์ด metric เดิม
+  if (window.matchMedia('(min-width:960px)').matches && sel.value){
+    renderDkpiForDevice(sel.value).catch(console.error); // อัปเดต DKPI ของ dashboard
+  }
+};
 
       await refreshAll();
       setInterval(()=> sel.value && loadProgress(sel.value).catch(showError), 60000);
@@ -343,68 +345,94 @@
 function td(v){ const el=document.createElement('td'); el.textContent=v; return el; }
 
 async function renderDashboard(){
-  // เปิดใช้ layout desktop เฉพาะจอใหญ่
-  if (window.matchMedia('(min-width:960px)').matches) {
-    document.getElementById('dashboard').hidden = false;
-  } else { return; }
+  // แสดงเฉพาะจอ >= 960px
+  if (!window.matchMedia('(min-width:960px)').matches) return;
+  $('dashboard').hidden = false;
 
   // 1) โหลดอุปกรณ์
   const resp = await authedGet('/api/devices');
   const devices = Array.isArray(resp?.devices) ? resp.devices : [];
 
-  // 2) เติมตารางบ่อ
-  const tbody = document.querySelector('#dash-table tbody'); tbody.innerHTML = '';
-  let waterArr=[], phArr=[], tempArr=[];
-  for (const d of devices){
-    const p = await getProgress(d.deviceId);
-    // เก็บตัวอย่างค่าไปทำ KPI ด้านบน (เฉลี่ยง่ายๆ)
-    if (typeof p.percent === 'number') waterArr.push(p.percent);
-    // ลองอ่านค่า ph/temp จาก shadow แบบเร็วๆ
-    try{
-      const Q = 'query($deviceid:String!){ shadow(deviceid:$deviceid){ data } }';
-      const r = await authedPost('/api/gql',{ query:Q, variables:{ deviceid:d.deviceId }});
-      const data = r?.data?.shadow?.data || {};
-      const ph   = getNum(data, ['soil_ph','pH','ph']); if (typeof ph === 'number') phArr.push(ph);
-      const temp = getNum(data, ['temp','temperature']); if (typeof temp === 'number') tempArr.push(temp);
-      // แถว
-      const tr=document.createElement('tr');
-      const health = (p.percent>=80?'A+':p.percent>=60?'B':'C');
-      const dot = document.createElement('span'); dot.className='dot ' + (p.percent>=80?'ok':p.percent>=60?'warn':'bad');
-      const badge = document.createElement('span'); badge.className='dash-badge'; badge.textContent = health;
-      const htd = document.createElement('td'); const wrap=document.createElement('div'); wrap.className='dash-health'; wrap.append(dot,' ',badge); htd.appendChild(wrap);
+  // 2) เติมตารางบ่อ + ปุ่ม Select ที่ผูก DKPI
+  const tbody = document.querySelector('#dash-table tbody'); 
+  tbody.innerHTML = '';
 
-      tr.append(htd, td(d.name||d.deviceId), td(`${Math.round(p.percent)}%`), td(ph??'—'), td(temp!=null?`${temp}°C`:'—'));
-      const btn=document.createElement('button'); btn.className='dash-btn'; btn.textContent='Details';
-      btn.onclick=()=>{ localStorage.setItem('deviceId', d.deviceId); location.href = location.pathname + '#mobile'; };
-      const actionTd=document.createElement('td'); actionTd.appendChild(btn); tr.appendChild(actionTd);
-      tbody.appendChild(tr);
+  for (const d of devices){
+    const tr = document.createElement('tr');
+    const td = v => { const el=document.createElement('td'); el.textContent=v; return el; };
+
+    // progress → ใช้ให้เห็น health/percent ในตาราง
+    let percentTxt = '—', health='—', dotCls='bad';
+    try{
+      const p = await getProgress(d.deviceId);
+      if (typeof p.percent === 'number'){
+        const pct = Math.round(p.percent);
+        percentTxt = `${pct}%`;
+        health = (pct>=80?'A+':pct>=60?'B':'C');
+        dotCls = (pct>=80?'ok':pct>=60?'warn':'bad');
+      }
     }catch{}
+
+    // shadow → ค่า pH / Temp ในตาราง (DKPI จะดึงอีกทีตอนเลือก)
+    let phTxt='—', tempTxt='—';
+    try{
+      const Q='query($deviceid:String!){ shadow(deviceid:$deviceid){ data } }';
+      const r=await authedPost('/api/gql',{query:Q,variables:{deviceid:d.deviceId}});
+      const data=r?.data?.shadow?.data || {};
+      const _ph = getNum(data,['soil_ph','pH','ph']);      if (typeof _ph === 'number') phTxt   = _ph.toFixed(1);
+      const _t  = getNum(data,['temp','temperature','temp_c']); if (typeof _t === 'number') tempTxt = _t.toFixed(1)+'°C';
+    }catch{}
+
+    // เซลสุขภาพ
+    const healthTd=document.createElement('td');
+    const wrap=document.createElement('div'); wrap.className='dash-health';
+    const dot=document.createElement('span'); dot.className='dot '+dotCls;
+    const badge=document.createElement('span'); badge.className='dash-badge'; badge.textContent=health;
+    wrap.append(dot,' ',badge); healthTd.appendChild(wrap);
+
+    tr.append(healthTd, td(d.name||d.deviceId), td(percentTxt), td(phTxt), td(tempTxt));
+
+    // ปุ่มเลือก device → อัปเดต DKPI ด้านบน
+    const btn=document.createElement('button'); btn.className='dash-btn'; btn.textContent='Select';
+    btn.onclick = () => renderDkpiForDevice(d.deviceId).catch(console.error);
+    const action=document.createElement('td'); action.appendChild(btn); tr.appendChild(action);
+
+    tbody.appendChild(tr);
   }
 
-  // 3) KPI ด้านบน (เฉลี่ยแบบง่าย)
-  const avg = a => a.length? (a.reduce((x,y)=>x+y,0)/a.length) : null;
-  const w = avg(waterArr), ph = avg(phArr), t = avg(tempArr);
-  document.getElementById('dkpi-water').textContent = w!=null ? `${Math.round(w)}%` : '—';
-  document.getElementById('dkpi-ph').textContent    = ph!=null ? ph.toFixed(1)   : '—';
-  document.getElementById('dkpi-temp').textContent  = t!=null ? `${t.toFixed(1)}°C` : '—';
+  // 3) ค่าเริ่มต้น: device ล่าสุดที่เคยเลือก หรือ ตัวแรกในลิสต์
+  const initial = localStorage.getItem('deviceId') || devices[0]?.deviceId;
+  if (initial) await renderDkpiForDevice(initial);
+} 
 
-  // 4) ตัวอย่าง Alerts/Activity แบบ mock (คุณต่อยอดใส่เงื่อนไขจริงได้)
-  const alerts = document.getElementById('dash-alerts');
-  alerts.innerHTML = `
-    <li><span class="ok"></span> Optimal growth</li>
-    <li><span class="warn"></span> Low water level</li>
-    <li><span class="bad"></span> pH above normal</li>`;
-  const act = document.getElementById('dash-activity');
-  act.innerHTML = `
-    <div class="dash-evt"><div><b>Watering System Adjustment</b><div><small>10:00–11:00</small></div></div><button class="dash-btn">Details</button></div>
-    <div class="dash-evt"><div><b>Fertilizer Check</b><div><small>12:00–12:30</small></div></div><small>Completed</small></div>
-    <div class="dash-evt"><div><b>Lighting Adjustment</b><div><small>16:00–18:00</small></div></div><small>In Progress</small></div>`;
+const formatPh   = p => (p==null || Number.isNaN(+p)) ? '—' : (+p).toFixed(1);
+const formatTemp = t => (t==null || Number.isNaN(+t)) ? '—' : `${(+t).toFixed(1)}°C`;
+function formatWater(w){
+  if (w==null || Number.isNaN(+w)) return '—';
+  const n = +w;
+  if (n <= 1)   return `${Math.round(n*100)}%`; // เผื่อเป็นสัดส่วน 0..1
+  if (n <= 100) return `${Math.round(n)}%`;     // เผื่อเป็นเปอร์เซ็นต์ 0..100
+  return String(n);                              // เผื่อหน่วยอื่น
 }
-// เรียกหลัง from your existing init flow:
-window.addEventListener('DOMContentLoaded', ()=> {
-  // หลัง ensureLogin + token cached + refreshAll ครั้งแรกเสร็จ
-  setTimeout(()=>renderDashboard().catch(console.error), 500);
-});
+
+/** ดึง shadow.data ของ device แล้วอัปเดต DKPI บน hero */
+async function renderDkpiForDevice(deviceId){
+  const Q = 'query($deviceid:String!){ shadow(deviceid:$deviceid){ data } }';
+  const r = await authedPost('/api/gql', { query: Q, variables: { deviceid: deviceId }});
+  const data = r?.data?.shadow?.data || {};
+
+  // พยายามหา key ตามชื่อที่พบบ่อย
+  const water = getNum(data, ['water_level','water','level','wl','water_percent','waterPct']);
+  const ph    = getNum(data, ['soil_ph','pH','ph']);
+  const temp  = getNum(data, ['temp','temperature','temp_c']);
+
+  $('dkpi-water').textContent = formatWater(water);
+  $('dkpi-ph').textContent    = formatPh(ph);
+  $('dkpi-temp').textContent  = formatTemp(temp);
+
+  // จำ device ล่าสุด
+  localStorage.setItem('deviceId', deviceId);
+}
   </script>
 </body>
 </html>

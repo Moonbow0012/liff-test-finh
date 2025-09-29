@@ -287,11 +287,6 @@ pre.log{
   padding:10px 12px; border-radius:12px; backdrop-filter: blur(4px); }
 .dkpi b{ font-size:18px }
 
-.dash-plant{ align-self:end; justify-self:end; width:min(360px,100%); aspect-ratio:4/3;
-  border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.25);
-  background: linear-gradient(180deg,rgba(255,255,255,.18),rgba(0,0,0,.12));
-}
-
 .dash-panels{ display:grid; grid-template-columns:2fr 1.2fr 1.8fr; gap:16px; margin-top:14px }
 .dash-card{ background:#fff; border:1px solid var(--finh-slate-200); border-radius:16px; padding:16px; box-shadow:var(--shadow); }
 .dash-card h3{ margin:0 0 8px; font-size:18px; color:#173c28; }
