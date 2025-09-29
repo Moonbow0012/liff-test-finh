@@ -1,76 +1,47 @@
-/* finh-theme.css — FINH green–blue theme */
+/* FINH Dashboard theme — minimal, only used styles */
+
 :root{
   --finh-green-600:#16a34a;
   --finh-green-500:#22c55e;
   --finh-green-400:#34d399;
   --finh-blue-600:#2563eb;
   --finh-blue-500:#3b82f6;
-  --finh-slate-900:#0b1020;
-  --finh-slate-700:#374151;
-  --finh-slate-600:#4b5563;
-  --finh-slate-500:#6b7280;
-  --finh-slate-300:#d1d5db;
   --finh-slate-200:#e5e7eb;
   --finh-surface:#ffffff;
-
-  --radius:12px;
+  --radius:16px;
   --shadow:0 1px 2px rgba(0,0,0,.07), 0 6px 12px rgba(0,0,0,.04);
 }
 
 html,body{
-  margin:0;
-  padding:0;
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji';
-  color:#111827;
-  background:linear-gradient(180deg, rgba(27,171,115,0.07), rgba(37,99,235,0.06)) fixed;
+  margin:0; padding:0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans Thai", Arial, sans-serif;
+  color:#11472d;
+  background: linear-gradient(180deg,#4caf67 0%, #6dcf7b 45%, #b5e39f 100%) fixed;
 }
 
-.container{
-  max-width:860px;
-  margin:18px auto;
-  padding:0 14px;
+/* Top bar */
+.topbar{
+  position:sticky; top:0; z-index:50;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:12px 16px; color:#fff; background:transparent;
 }
+.brand img{ height:75px; display:block; }
+.topbar .right{ display:flex; gap:8px; align-items:center; }
+.topbar select{
+  appearance:none; border:0; outline:0; border-radius:999px; padding:8px 12px;
+  background:#ffffffdd; color:#0f172a; font-weight:700; max-width:62vw;
+}
+.icon-btn{ border:0; background:#ffffffcc; border-radius:999px; padding:8px 10px; line-height:1; cursor:pointer; }
 
-.card{
-  background:var(--finh-surface);
-  border:1px solid var(--finh-slate-200);
-  border-radius:var(--radius);
-  box-shadow:var(--shadow);
-  padding:12px;
-}
+/* Dashboard */
+.dashboard{ display:block; padding:18px 16px 40px; color:#0b1a13; }
 
-.row{ display:flex; gap:.5rem; align-items:center; margin:8px 0; flex-wrap:wrap; }
-.muted{ color:var(--finh-slate-500); font-size:.9rem; }
-
-/* Buttons & inputs */
-.button{
-  appearance:none; border:0; cursor:pointer;
-  background: linear-gradient(135deg, var(--finh-green-600), var(--finh-blue-600));
-  color:white; padding:10px 14px; border-radius:10px; font-weight:600;
-  box-shadow:0 2px 10px rgba(22,163,74,.24), 0 2px 10px rgba(37,99,235,.24);
-  transition: transform .08s ease, filter .15s;
+.dash-hero{
+  border-radius:24px; padding:28px;
+  background: linear-gradient(135deg, var(--finh-green-600), #19764a);
+  color:#fff; display:grid; grid-template-columns:1fr; gap:18px;
 }
-.button:hover{ filter:brightness(1.05); }
-.button:active{ transform:translateY(1px); }
-
-.select, .input{
-  border:1px solid var(--finh-slate-300);
-  border-radius:10px;
-  padding:8px 10px;
-  background:#fff;
-}
-
-/* Progress */
-.progress{ display:flex; align-items:center; gap:10px; }
-.progress .bar{
-  flex:1; height:12px; background:#e5e7eb; border-radius:999px; overflow:hidden; position:relative;
-}
-.progress .bar > span{
-  display:block; height:100%; width:0%;
-  background:linear-gradient(90deg, var(--finh-green-500), var(--finh-blue-500));
-  transition:width .3s ease;
-}
-.progress .pct{ min-width:52px; font-weight:700; color:var(--finh-slate-700); }
+.dash-hero h1{ margin:0 0 6px; font-size:44px; line-height:1.1; }
 
 .level{
   font-weight:800; letter-spacing:.3px;
@@ -78,280 +49,67 @@ html,body{
   -webkit-background-clip:text; background-clip:text; color:transparent;
 }
 
-.status-ok{ color:var(--finh-green-600); font-weight:700; }
-.status-bad{ color:#ef4444; font-weight:700; }
-
-pre.log{
-  background:var(--finh-slate-900); color:#cbd5e1;
-  padding:12px; border-radius:10px; overflow:auto;
-}
-
-/* User card */
-.user{ display:flex; align-items:center; gap:12px; }
-.user .avatar{
-  width:48px; height:48px; border-radius:999px; object-fit:cover; background:#e5e7eb;
-  box-shadow: 0 0 0 2px rgba(34,197,94,.2), 0 0 0 6px rgba(59,130,246,.14);
-}
-.user .uid{
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  cursor:pointer;
-}
-.user .uid:hover{ text-decoration:underline; }
-.pill{ background:#f3f4f6; border-radius:8px; padding:2px 6px; font-size:.8rem; }
-.right{ margin-left:auto; display:flex; gap:8px; align-items:center; }
-.linkish{ background:none; border:none; color:var(--finh-blue-600); cursor:pointer; padding:0; }
-
-/* Small helpers */
-.mt-10{ margin-top:10px; }
-.flex-1{ flex:1; }
-
-    :root{
-      --bar-h: 8px;               /* ปรับความสูงแถบ progress ได้ที่นี่ */
-      --card-radius: 16px;
-    }
-    body{
-      margin:0;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, 'Helvetica Neue', Arial, 'Noto Sans Thai', sans-serif;
-      color:#11472d;
-      min-height:100vh;
-      background: linear-gradient(180deg,#4caf67 0%, #6dcf7b 45%, #b5e39f 100%) fixed;
-    }
-
-    /* Top bar */
-    .topbar{
-      position: sticky; top: 0; z-index: 50;
-      display:flex; align-items:center; justify-content:space-between;
-      padding:12px 16px;
-      color:#fff;
-      background: transparent;
-    }
-    .brand img{ height:75px; display:block; }
-    .topbar .right{ display:flex; gap:8px; align-items:center; }
-    .topbar select{
-      appearance:none; border:0; outline:0;
-      border-radius:999px; padding:8px 12px;
-      background:#ffffffdd; color:#0f172a; font-weight:700;
-      max-width:62vw;
-    }
-    .icon-btn{
-      border:0; background:#ffffffcc; border-radius:999px; padding:8px 10px;
-      line-height:1; cursor:pointer;
-    }
-
-    .wrap{ max-width:420px; margin:0 auto; padding: 6px 16px 40px; }
-
-    /* Hero (ไอคอน Organic ตรงกลาง) */
-    .hero{
-      width:104px; height:104px; margin:18px auto 10px;
-      border-radius:999px;
-      display:flex; align-items:center; justify-content:center;
-      background: radial-gradient(ellipse at center, #fff 0%, #e7ffe9 100%);
-      box-shadow: 0 2px 14px rgba(16, 185, 129, .25) inset, 0 8px 22px rgba(16,24,40,.06);
-    }
-    .hero img{ width:74px; height:74px; object-fit:contain; }
-
-    .center{ text-align:center; color:#ffffff; }
-    .title{ font-size:20px; font-weight:800; }
-    .sub{ opacity:.9; font-weight:600; }
-
-/* ปรับความสูงแถบตรงนี้ได้ */
-:root { --bar-h: 14px; }
-
-/* Progress สไตล์ใหม่ */
-.progress-lite{
-  display:flex; align-items:center; gap:12px;
-  justify-content:center; margin:14px auto 0; width:90%;
-}
-
+/* Progress (Overview) */
+:root{ --bar-h:14px; }
+.progress-lite{ display:flex; align-items:center; gap:12px; justify-content:flex-start; margin:10px 0 0 0; width:100%; }
 .track{
-  position:relative;
-  flex:1; height:var(--bar-h);
+  position:relative; flex:1; height:var(--bar-h);
   background: linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,.35));
-  border:1px solid rgba(255,255,255,.55);
-  border-radius:999px; overflow:hidden;
+  border:1px solid rgba(255,255,255,.55); border-radius:999px; overflow:hidden;
   box-shadow: inset 0 2px 6px rgba(16,24,40,.12), 0 4px 18px rgba(16,185,129,.20);
 }
-
-/* แถบสีเขียว + ลายเส้นวิ่ง + หัวไฟเรือง */
 .fill{
   position:relative; height:100%; width:0%;
-  background:
-    linear-gradient(90deg, #34d399 0%, #22c55e 40%, #16a34a 80%, #15803d 100%); /* สีหลัก */
-  border-radius:999px;
-  box-shadow:
-    inset 0 0 0 1px rgba(255,255,255,.35),
-    0 6px 14px rgba(34,197,94,.35);
-  transition: width .45s ease; /* ลื่นขึ้น */
+  background: linear-gradient(90deg, #34d399 0%, #22c55e 40%, #16a34a 80%, #15803d 100%);
+  border-radius:999px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.35), 0 6px 14px rgba(34,197,94,.35);
+  transition: width .45s ease;
 }
-
-/* ลายแถบเอียง ๆ ไหลไปขวา */
 .fill::before{
-  content:"";
-  position:absolute; inset:0;
-  background-image: repeating-linear-gradient(
-    -45deg,
-    rgba(255,255,255,.28) 0px,
-    rgba(255,255,255,.28) 10px,
-    rgba(255,255,255,0)   10px,
-    rgba(255,255,255,0)   20px
-  );
-  background-size: 28px 100%;
-  animation: slide 1.4s linear infinite;
-  mix-blend-mode: soft-light;
-  pointer-events:none;
+  content:""; position:absolute; inset:0;
+  background-image: repeating-linear-gradient(-45deg, rgba(255,255,255,.28) 0 10px, rgba(255,255,255,0) 10px 20px);
+  background-size: 28px 100%; animation: slide 1.4s linear infinite; mix-blend-mode: soft-light;
 }
-
-/* หัวไฟกลม ๆ เรืองแสงที่ปลายแถบ */
 .fill::after{
-  content:"";
-  position:absolute; right:-6px; top:50%;
-  width:18px; height:18px; border-radius:50%;
+  content:""; position:absolute; right:-6px; top:50%; width:18px; height:18px; border-radius:50%;
   transform: translateY(-50%);
   background: radial-gradient(circle at 35% 35%, #ffffff, #d1fae5 60%, #a7f3d0 100%);
   border: 2px solid rgba(16,185,129,.9);
-  box-shadow:
-    0 0 0 4px rgba(16,185,129,.20),
-    0 2px 10px rgba(16,24,40,.25),
-    0 0 18px rgba(34,197,94,.55);
-  pointer-events:none;
+  box-shadow: 0 0 0 4px rgba(16,185,129,.20), 0 2px 10px rgba(16,24,40,.25), 0 0 18px rgba(34,197,94,.55);
 }
-
-/* เปอร์เซ็นต์เป็น pill ชัด ๆ */
 .pct{
-  color:#0b3d23;
-  background:#ffffffcc;
-  backdrop-filter: blur(4px);
-  font-weight:900;
-  border-radius:999px;
-  padding:6px 10px;
-  min-width: 56px;
-  text-align:center;
+  color:#0b3d23; background:#ffffffcc; backdrop-filter: blur(4px);
+  font-weight:900; border-radius:999px; padding:6px 10px; min-width:56px; text-align:center;
   box-shadow: 0 4px 16px rgba(0,0,0,.12), inset 0 0 0 1px rgba(255,255,255,.8);
 }
+@keyframes slide{ 0%{background-position-x:0} 100%{background-position-x:28px} }
 
-/* แอนิเมชันลายไหล */
-@keyframes slide{
-  0%   { background-position-x: 0; }
-  100% { background-position-x: 28px; }
+/* KPIs */
+.dash-kpis{ display:flex; gap:12px; flex-wrap:wrap; margin-top:8px; }
+.dkpi{
+  background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.25);
+  padding:10px 12px; border-radius:12px; backdrop-filter: blur(4px);
 }
-
-    /* การ์ด Status */
-    .card{
-      background:#fff; border-radius: var(--card-radius);
-      box-shadow: 0 10px 30px rgba(0,0,0,.08);
-      border:1px solid #e6f3e8;
-      margin-top:18px; padding:12px 14px;
-    }
-    .card h3{
-      margin:6px 8px 8px; font-size:14px; color:#215b3a; letter-spacing:.2px;
-    }
-    .metrics{ list-style:none; padding:0; margin:0; }
-    .metrics li{
-      display:flex; align-items:center; justify-content:space-between;
-      padding:14px 10px;
-      border-top:1px solid #edf3ee;
-    }
-    .metrics li:first-child{ border-top:0; }
-    .metric-left{ display:flex; align-items:center; gap:10px; color:#215b3a; }
-    .ic{
-      width:28px; height:28px; display:grid; place-items:center;
-      border-radius:10px; background:#e8f7ec; color:#1d8b4d;
-    }
-    .val{ font-weight:700; color:#173c28; }
-
-    /* CTA ด้านล่าง */
-    .cta{
-      margin:18px auto 0; width:100%;
-      background:#e7efe8; color:#5d7468;
-      font-weight:800; font-size:16px;
-      border:0; border-radius:18px; padding:16px 12px;
-    }
-    .cta.ready{ background:#1bb266; color:#fff; box-shadow:0 6px 18px rgba(27,178,102,.35); }
-
-    /* Debug log (ปิดไว้เป็นค่าเริ่มต้น) */
-    #out{ display:none; }
-
-
-.dashboard{ display:block; padding:18px 16px 40px; color:#0b1a13; }
-.wrap{ display:none !important; }
-
-.dash-hero{
-  border-radius:24px;
-  padding:28px;
-  background: linear-gradient(135deg, var(--finh-green-600), #19764a);
-  color:#fff; display:grid; grid-template-columns:1.2fr .8fr; gap:18px;
-}
-.dash-hero h1{ margin:0 0 6px; font-size:44px; line-height:1.1; }
-.dash-kpis{ display:flex; gap:12px; flex-wrap:wrap }
-.dkpi{ background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.25);
-  padding:10px 12px; border-radius:12px; backdrop-filter: blur(4px); }
 .dkpi b{ font-size:18px }
 
-.dash-panels{ display:grid; grid-template-columns:2fr 1.2fr 1.8fr; gap:16px; margin-top:14px }
-.dash-card{ background:#fff; border:1px solid var(--finh-slate-200); border-radius:16px; padding:16px; box-shadow:var(--shadow); }
+/* Panels */
+.dash-panels{ display:grid; grid-template-columns:2fr 1.2fr 1.8fr; gap:16px; margin-top:14px; }
+.dash-card{ background:#fff; border:1px solid var(--finh-slate-200); border-radius:var(--radius); padding:16px; box-shadow:var(--shadow); }
 .dash-card h3{ margin:0 0 8px; font-size:18px; color:#173c28; }
-.dash-spark{ height:180px; border:1px dashed #c6d5cc; border-radius:12px; display:grid; place-items:center; color:#7a9387 }
 
-.dash-alerts{ list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:10px }
-.dash-alerts li{ display:flex; gap:10px; align-items:center; background:#f8fbf9; border:1px solid #e6f3e8; border-radius:12px; padding:10px 12px }
-.dash-alerts .ok{ width:10px; height:10px; border-radius:50%; background:#45d483 }
-.dash-alerts .warn{ width:10px; height:10px; border-radius:50%; background:#ffbd4a }
-.dash-alerts .bad{ width:10px; height:10px; border-radius:50%; background:#ff6b6b }
-
-.dash-activity{ display:flex; flex-direction:column; gap:10px }
-.dash-evt{ display:flex; justify-content:space-between; align-items:center; background:#f8fbf9; border:1px solid #e6f3e8; border-radius:12px; padding:10px 12px }
-.dash-btn{ border:0; border-radius:10px; padding:6px 10px; background:#e8f1ec; color:#174834 }
-
-.dash-table-wrap{ margin-top:18px }
-.dash-table{ width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--finh-slate-200); border-radius:14px; overflow:hidden; }
-.dash-table th, .dash-table td{ padding:12px 14px; border-bottom:1px solid #eef3ef; text-align:left }
-.dash-table th{ font-size:13px; color:#4b6a5d }
-.dash-health{ display:flex; align-items:center; gap:8px }
-.dash-badge{ padding:4px 8px; border-radius:999px; font-size:12px; border:1px solid #e0eee6; background:#f3faf6 }
-
-/* การ์ดซ้าย (Growth analytics) โทนเข้ม */
-.dash-card.growth{
-  color:#e9f6ee;
-  background:#0f2d1d;
-  border-color:#224f38;
-}
+/* Growth analytics (dark card) */
+.dash-card.growth{ color:#e9f6ee; background:#0f2d1d; border-color:#224f38; }
 .dash-card.growth h3{ color:#cfe9d7; }
-.dash-card.growth .dash-spark{
-  display: block;
-  place-items: initial;
-  padding: 0;
-  position: relative;
-}
+.dash-card.growth .dash-spark{ display:block; position:relative; height:220px; border:1px dashed rgba(255,255,255,.28); border-radius:12px; background:linear-gradient(180deg, rgba(0,0,0,.15), rgba(255,255,255,.05)); }
 .dash-spark canvas{ width:100%; height:220px; display:block; }
-  
 
-/* การ์ดกลาง (Critical Alerts) โทนเหลือง */
-.dash-card.alerts{
-  background:#ffcc00; color:#000000;
-}
-.dash-alerts{ list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:10px }
-.dash-alerts li{
-  display:flex; align-items:center; gap:10px;
-  border-radius:12px; padding:10px 12px;
-}
+/* Alerts (yellow) */
+.dash-card.alerts{ background:#ffcc00; color:#000; }
+.dash-alerts{ list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:10px; }
+.dash-alerts li{ display:flex; align-items:center; gap:10px; border-radius:12px; padding:10px 12px; background:#fff8d7; }
 .dash-alerts .ok,.dash-alerts .warn,.dash-alerts .bad{ width:10px; height:10px; border-radius:50% }
 .dash-alerts .ok{ background:#16a34a } .dash-alerts .warn{ background:#f59e0b } .dash-alerts .bad{ background:#ef4444 }
-/* Spark canvas should fill card width */
-.dash-spark canvas{ width:100%; height:180px; display:block; }
 
-/* ใช้ UI หลอด/ระดับซ้ำกับมือถือ แต่จัดเลย์เอาต์ให้เข้ากับ hero */
-.dash-level{
-  margin-top:8px;
-  font-size:14px;
-  font-weight:800;
-  color:#ffffff;
-}
-
-.dash-hero .progress-lite{
-  width:100%;
-  margin:10px 0 0 0;
-  justify-content:flex-start;
-}
-.dash-hero .pct{ margin-left:10px; }
-
-
+/* Activity */
+.dash-activity{ display:flex; flex-direction:column; gap:10px; }
+.dash-evt{ display:flex; justify-content:space-between; align-items:center; background:#f8fbf9; border:1px solid #e6f3e8; border-radius:12px; padding:10px 12px; }
+.dash-btn{ border:0; border-radius:10px; padding:6px 10px; background:#e8f1ec; color:#174834; }
