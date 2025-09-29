@@ -81,39 +81,61 @@
     <pre id="out" class="log">—</pre>
   </main>
   <section class="dashboard" id="dashboard" hidden>
-  <div class="dash-hero">
-    <div>
-      <h1>Overview</h1>
-      <div class="dash-kpis">
-        <div class="dkpi"><small>Water </small><b id="dkpi-water">—</b></div>
-        <div class="dkpi"><small>pH Level </small><b id="dkpi-ph">—</b></div>
-        <div class="dkpi"><small>Temperature </small><b id="dkpi-temp">—</b></div>
-      </div>
+<div class="dash-hero">
+  <div>
+    <h1>Overview</h1>
+    <div class="dash-kpis">
+      <div class="dkpi"><small>Water </small><b id="dkpi-water">—</b></div>
+      <div class="dkpi"><small>pH Level </small><b id="dkpi-ph">—</b></div>
+      <div class="dkpi"><small>Temperature (°C)</small><b id="dkpi-temp">—</b></div>
+    </div>
+  </div>
+  <!-- เพิ่มภาพ/สื่อด้านขวา -->
+  <div class="dash-plant" aria-hidden="true"></div>
+</div>
+
+<!-- PANELS (3 ใบ) -->
+<div class="dash-panels">
+  <!-- ซ้าย: Growth analytics (เข้ม) -->
+  <div class="dash-card growth">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h3>Growth analytics</h3>
+      <button class="dash-btn" onclick="/* ต่อเป็นหน้า details ภายหลังได้ */">Details</button>
+    </div>
+    <div class="dash-spark">
+      <canvas id="spark" width="800" height="220" aria-label="pH & Temp chart"></canvas>
+    </div>
+    <div class="legend" style="margin-top:8px;font-size:12px;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#16a34a;margin-right:6px;"></span> pH
+      &nbsp;&nbsp;
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#2563eb;margin-right:6px;"></span> Temp
     </div>
   </div>
 
-  <div class="dash-panels">
-<div class="dash-card">
-  <h3>Growth analytics</h3>
-  <div class="dash-spark">
-    <canvas id="spark" width="600" height="180" aria-label="pH & Temp chart"></canvas>
-    <div class="legend" style="margin-top:6px;font-size:12px;color:#4b6a5d;">
-      <span class="dot ph" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#16a34a;margin-right:6px;"></span> pH
-      &nbsp;&nbsp;
-      <span class="dot temp" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#2563eb;margin-right:6px;"></span> Temp
+  <!-- กลาง: Critical Alerts (เหลือง) -->
+  <div class="dash-card alerts">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h3>Critical Alerts</h3>
+      <a href="javascript:void(0)" style="font-size:13px;">View all</a>
+    </div>
+    <ul class="dash-alerts" id="dash-alerts">
+      <li><span class="ok"></span> Optimal growth</li>
+      <li><span class="warn"></span> Low water level</li>
+      <li><span class="bad"></span> pH above normal</li>
+    </ul>
+  </div>
+
+  <!-- ขวา: Activity Overview -->
+  <div class="dash-card activity">
+    <h3>Activity Overview</h3>
+    <div class="dash-activity" id="dash-activity">
+      <div class="dash-evt"><div><b>Watering System Adjustment</b><div><small>10:00–11:00</small></div></div><button class="dash-btn">Details</button></div>
+      <div class="dash-evt"><div><b>Fertilizer Check</b><div><small>12:00–12:30</small></div></div><small>Completed</small></div>
+      <div class="dash-evt"><div><b>Lighting Adjustment</b><div><small>16:00–18:00</small></div></div><small>In Progress</small></div>
     </div>
   </div>
 </div>
-
-  <div class="dash-table-wrap">
-    <h3>Active Ponds</h3>
-    <table class="dash-table" id="dash-table" aria-label="รายการบ่อ">
-      <thead><tr><th>HEALTH</th><th>POND</th><th>WATER</th><th>pH</th><th>TEMP</th><th></th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </div>
 </section>
-
 <script>
 /* ===================== ค่าคงเดิม ===================== */
 const LIFF_ID = '2008085765-YDwJrxy9';
