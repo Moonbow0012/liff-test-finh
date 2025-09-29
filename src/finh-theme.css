@@ -90,29 +90,39 @@ html,body{
 }
 .dkpi b{ font-size:18px }
 
-/* ===== DKPI: icon + label-top/value-bottom ===== */
-.dash-kpis{ display:flex; gap:12px; flex-wrap:wrap; margin-top:8px; }
-
+.dash-kpis{
+  display:flex; gap:28px; flex-wrap:wrap; margin-top:14px;
+}
 .dkpi{
-  display:flex; align-items:center; gap:10px;
-  padding:10px 12px; border-radius:12px;
-  background: rgba(255,255,255,.10);
-  border: 1px solid rgba(255,255,255,.25);
-  backdrop-filter: blur(4px);
+  display:flex; flex-direction:column; align-items:flex-start;
+  gap:6px; padding:0; background:transparent; border:0;
+}
+.kpi-ic{
+  width:22px; height:22px; display:block;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,.25));
+  opacity: .95;
+}
+.dkpi small{
+  color:#ffffff; opacity:.95; font-weight:700; letter-spacing:.2px;
+}
+.dkpi b{
+  color:#ffffff; font-size:42px; line-height:1; margin-top:2px;
 }
 
-.kpi-ic{ width:18px; height:18px; display:inline-flex; color:#fff; opacity:.95; }
-.kpi-ic svg{ width:18px; height:18px; display:block; }
+/* โทนสีเผื่อใช้ PNG/ไอคอนขาวดำ (ไม่บังคับ) */
+.kpi-water .kpi-ic{ /* ไอคอนหยดน้ำ */
+  /* ถ้าเป็น SVG สีอยู่ในไฟล์แล้วก็โอเค; ถ้าเป็น PNG ขาวดำอยากย้อมสี: */
+  /* filter: hue-rotate(170deg) saturate(180%); */
+}
+.kpi-ph .kpi-ic{ /* บีกเกอร์ */ }
+.kpi-temp .kpi-ic{ /* เทอร์โมมิเตอร์ */ }
 
-/* ข้อความ: จัดแนวเป็นคอลัมน์ (label ด้านบน, value ด้านล่าง) */
-.kpi-txt{ display:flex; flex-direction:column; line-height:1.1; }
-.dkpi small{ font-weight:600; opacity:.95; }
-.dkpi b{ font-size:20px; margin-top:2px; }
-
-/* โทนสีไอคอนตามชนิด */
-.kpi-water .kpi-ic{ color:#7dd3fc; }   /* น้ำ */
-.kpi-ph    .kpi-ic{ color:#a78bfa; }   /* บีกเกอร์/ค่ากรด-ด่าง */
-.kpi-temp  .kpi-ic{ color:#fdba74; }   /* อุณหภูมิ */
+/* มือถือ */
+@media (max-width:640px){
+  .dash-kpis{ gap:18px; }
+  .kpi-ic{ width:18px; height:18px; }
+  .dkpi b{ font-size:32px; }
+}
 
 /* มือถือ: ย่อฟอนต์ลงเล็กน้อย */
 @media (max-width:640px){
