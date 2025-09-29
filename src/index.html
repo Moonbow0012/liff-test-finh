@@ -93,19 +93,17 @@
   </div>
 
   <div class="dash-panels">
-    <div class="dash-card">
-      <h3>Growth analytics</h3>
-      <div class="dash-spark" id="dash-spark">12–30 day chart slot</div>
-    </div>
-    <div class="dash-card">
-      <h3>Critical Alerts</h3>
-      <ul class="dash-alerts" id="dash-alerts"></ul>
-    </div>
-    <div class="dash-card">
-      <h3>Activity Overview</h3>
-      <div class="dash-activity" id="dash-activity"></div>
+<div class="dash-card">
+  <h3>Growth analytics</h3>
+  <div class="dash-spark">
+    <canvas id="spark" width="600" height="180" aria-label="pH & Temp chart"></canvas>
+    <div class="legend" style="margin-top:6px;font-size:12px;color:#4b6a5d;">
+      <span class="dot ph" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#16a34a;margin-right:6px;"></span> pH
+      &nbsp;&nbsp;
+      <span class="dot temp" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#2563eb;margin-right:6px;"></span> Temp
     </div>
   </div>
+</div>
 
   <div class="dash-table-wrap">
     <h3>Active Ponds</h3>
@@ -116,187 +114,355 @@
   </div>
 </section>
 
-  <script>
-  // ======== ค่าคงเดิม (ไม่แตะ Backend/Firebase) =========
-  const LIFF_ID = '2008085765-YDwJrxy9';
-  const FIREBASE_PROGRESS_URL = 'https://getprogress-iyipepekja-as.a.run.app';
+<script>
+/* ===================== ค่าคงเดิม ===================== */
+const LIFF_ID = '2008085765-YDwJrxy9';
+const FIREBASE_PROGRESS_URL = 'https://getprogress-iyipepekja-as.a.run.app';
 
-  const $ = (id) => document.getElementById(id);
-  const statusEl = $('status');
-  const out = $('out');
+/* ===================== DOM refs ===================== */
+const $ = (id) => document.getElementById(id);
+const statusEl = $('status');
+const out = $('out');
 
-  const barFill = $('barFill');
-  const pctTop = $('pctTop');
-  const growthLevel = $('growthLevel');
-  const cta = $('ctaState');
+const barFill = $('barFill');
+const pctTop = $('pctTop');
+const growthLevel = $('growthLevel');
+const cta = $('ctaState');
 
-  const metricEls = { chl: $('mChl'), ph: $('mPh'), temp: $('mTemp'), ec: $('mEc') };
+const metricEls = { chl: $('mChl'), ph: $('mPh'), temp: $('mTemp'), ec: $('mEc') };
 
-  function showError(err){
-    console.error(err);
-    const msg = (typeof err === 'string') ? err : (err?.message || JSON.stringify(err));
-    statusEl.textContent = 'Error: ' + msg;
-    out.style.display = 'block';
-    out.textContent = msg;
-  }
-
-  function buildAuthHeaders(){
-    const idToken = sessionStorage.getItem('line_id_token') || liff.getIDToken();
-    const access  = sessionStorage.getItem('line_access_token') || liff.getAccessToken();
-    const h = { 'Content-Type': 'application/json' };
-    if (idToken && idToken.includes('.')) h['x-line-id-token'] = idToken;
-    else if (access) h['x-line-access-token'] = access;
-    else throw new Error('No LINE token available');
-    return h;
-  }
-  async function authedGet(url){
-    const r = await fetch(url, { headers: buildAuthHeaders() });
-    const t = await r.text(); let j; try{ j = JSON.parse(t); }catch{ throw new Error(`HTTP ${r.status}: ${t}`); }
-    if (!r.ok || j.error) throw new Error(j.error || t);
-    return j;
-  }
-  async function authedPost(url, body){
-    const r = await fetch(url, { method:'POST', headers: buildAuthHeaders(), body: JSON.stringify(body||{}) });
-    const t = await r.text(); let j; try{ j = JSON.parse(t); }catch{ throw new Error(`HTTP ${r.status}: ${t}`); }
-    if (!r.ok || j.errors) throw new Error(j.errors ? JSON.stringify(j.errors) : t);
-    return j;
-  }
-
-  function normalizeLevel(lvl){
-    if (typeof lvl === 'number') return ['1','2','3','4'][Math.max(0, Math.min(3, lvl))] || String(lvl);
-    if (typeof lvl === 'string' && /^\d+$/.test(lvl)) {
-      const n = parseInt(lvl, 10);
-      return ['1','2','3','4'][Math.max(0, Math.min(3, n))] || lvl;
-    }
-    if (String(lvl).toLowerCase().includes('ready')) return '4';
-    return String(lvl || '-');
-  }
-
-  function pickUpdated(d){
-    if (d.updatedAtIso) return d.updatedAtIso;
-    const u = d.updatedAt;
-    if (!u) return '—';
-    if (typeof u === 'string') return u;
-    if (u && typeof u === 'object' && '_seconds' in u) return new Date(u._seconds * 1000).toISOString();
-    return String(u);
-  }
-
-  // หาค่าจาก shadow แบบเดาคีย์ทั่วไป (กันหลายชื่อ)
-  function getNum(obj, keys){
-    const all = Object.keys(obj || {});
-    // หา key ที่ตรงแบบ contains (ไม่สนตัวพิมพ์เล็กใหญ่ / _ .)
-    const canon = s => String(s||'').toLowerCase();
-    for (const k of all){
-      const ck = canon(k);
-      if (keys.some(q => ck.includes(canon(q)))){
-        const v = Number(obj[k]);
-        if (!Number.isNaN(v)) return v;
-      }
-    }
-    // รองรับ data ซ้อน
-    for (const k of all){
-      if (obj[k] && typeof obj[k] === 'object'){
-        const v = getNum(obj[k], keys);
-        if (typeof v === 'number') return v;
-      }
-    }
-    return null;
-  }
-
-  function setMetric(el, val, suffix=''){
-    el.textContent = (val==null || Number.isNaN(val)) ? '—' : (suffix ? `${val}${suffix}` : String(val));
-  }
-
-  async function loadShadow(deviceId){
-    const Q = 'query($deviceid:String!){ shadow(deviceid:$deviceid){ deviceid rev modified data } }';
-    const r = await authedPost('/api/gql', { query: Q, variables: { deviceid: deviceId }});
-    out.textContent = JSON.stringify(r.data, null, 2);   // debug ไว้ก่อน (ซ่อนไว้)
-    const data = r?.data?.shadow?.data || {};
-
-    // เดาชื่อคีย์ทั่วไป
-    const chl  = getNum(data, ['chloro','chlorophyll','par','ndvi','leaf']);
-    const ph   = getNum(data, ['soil_ph','pH','ph']);
-    const temp = getNum(data, ['temp','temperature']);
-    const ec   = getNum(data, ['soil_ec','ec','conductivity']);
-
-    setMetric(metricEls.chl,  chl!=null ? +chl.toFixed(1) : null);
-    setMetric(metricEls.ph,   ph!=null ? +ph.toFixed(2) : null);
-    setMetric(metricEls.temp, temp!=null ? +temp.toFixed(1) : null, '°C');
-    setMetric(metricEls.ec,   ec!=null ? +ec.toFixed(3) : null);
-  }
-
-  async function loadProgress(deviceId){
-    const url = `${FIREBASE_PROGRESS_URL}?deviceId=${encodeURIComponent(deviceId)}`;
-    const r = await fetch(url, { cache:'no-store' });
-    const data = await r.json();
-    if (!r.ok || data.error) throw new Error(data.error || JSON.stringify(data));
-
-    const pct = typeof data.percent === 'number' ? Math.max(0, Math.min(100, data.percent)) : null;
-    const lvl = normalizeLevel(data.level);
-    const good = ('Status' in data) ? !!data.Status : !!data.goodNow;
-    const updated = pickUpdated(data);
-
-    pctTop.textContent = pct!=null ? pct.toFixed(1) : '—';
-    barFill.style.width = pct!=null ? `${pct}%` : '0%';
-    growthLevel.textContent = lvl;
-
-    cta.textContent = good ? 'Ready!' : 'Not Ready Yet';
-    cta.classList.toggle('ready', good);
-
-    statusEl.textContent = `Updated: ${updated}`;
-  }
-
-    // --- ADD: helpers for LIFF login flow ---
-  function stripRedirectUri() { 
-    // ให้ URL สะอาด (กัน loop จาก ?code / ?liffRedirectUri)
-    return location.origin + location.pathname; 
-  }
-
-  async function ensureLogin() {
-    if (liff.isLoggedIn()) return;
-
-    const redirectUri = stripRedirectUri();
-
-    if (liff.isInClient()) {
-      // อยู่ในแอป LINE → เรียกแบบไม่ใส่ scope/prompt/redirectUri
-      // เพื่อให้ consent (“Allow”) โผล่ในเว็บวิวของ LINE เอง
-      liff.login();
-    } else {
-      // นอกแอป → ใช้ external browser + redirectUri สะอาด
-      liff.login({ withLoginOnExternalBrowser: true, redirectUri });
-    }
-
-    // หยุดการรันต่อจนกว่า redirect กลับมา
-    return new Promise(()=>{});
-  }
-
-  window.addEventListener('DOMContentLoaded', async () => {
-    try{
-      await liff.init({ liffId: LIFF_ID });
-      await ensureLogin();
-
-{
-  const qs = new URLSearchParams(location.search);
-  if (qs.get('code') || qs.get('liffRedirectUri')) {
-    history.replaceState({}, '', stripRedirectUri());
-  }
+/* ===================== Utils ===================== */
+function showError(err){
+  console.error(err);
+  const msg = (typeof err === 'string') ? err : (err?.message || JSON.stringify(err));
+  if (statusEl) statusEl.textContent = 'Error: ' + msg;
+  if (out) { out.style.display = 'block'; out.textContent = msg; }
 }
 
-      // cache token
-      const idToken = liff.getIDToken();
-      const accessToken = liff.getAccessToken();
-      if (idToken) sessionStorage.setItem('line_id_token', idToken);
-      if (accessToken) sessionStorage.setItem('line_access_token', accessToken);
+function normalizeLevel(lvl){
+  if (typeof lvl === 'number') return ['1','2','3','4'][Math.max(0, Math.min(3, lvl))] || String(lvl);
+  if (typeof lvl === 'string' && /^\d+$/.test(lvl)) {
+    const n = parseInt(lvl, 10);
+    return ['1','2','3','4'][Math.max(0, Math.min(3, n))] || lvl;
+  }
+  if (String(lvl).toLowerCase().includes('ready')) return '4';
+  return String(lvl || '-');
+}
 
-      const sel = $('deviceSelect');
+function pickUpdated(d){
+  if (d?.updatedAtIso) return d.updatedAtIso;
+  const u = d?.updatedAt;
+  if (!u) return '—';
+  if (typeof u === 'string') return u;
+  if (u && typeof u === 'object' && '_seconds' in u) return new Date(u._seconds * 1000).toISOString();
+  return String(u);
+}
 
-      // โหลดรายการอุปกรณ์
-      let devices = [];
-      try{
-        const resp = await authedGet('/api/devices');
-        devices = Array.isArray(resp?.devices) ? resp.devices : [];
-      }catch(e){ showError(e); }
+/* ===== หาค่าจาก shadow แบบเดาคีย์ทั่วไป (กันหลายชื่อ) ===== */
+function getNum(obj, keys){
+  const all = Object.keys(obj || {});
+  const canon = s => String(s||'').toLowerCase();
+  for (const k of all){
+    const ck = canon(k);
+    if (keys.some(q => ck.includes(canon(q)))){
+      const v = Number(obj[k]);
+      if (!Number.isNaN(v)) return v;
+    }
+  }
+  for (const k of all){
+    if (obj[k] && typeof obj[k] === 'object'){
+      const v = getNum(obj[k], keys);
+      if (typeof v === 'number') return v;
+    }
+  }
+  return null;
+}
 
+function setMetric(el, val, suffix=''){
+  if (!el) return;
+  el.textContent = (val==null || Number.isNaN(val)) ? '—' : (suffix ? `${val}${suffix}` : String(val));
+}
+
+/* ===================== LINE Auth helpers ===================== */
+function stripRedirectUri() { 
+  return location.origin + location.pathname; 
+}
+
+async function ensureLogin() {
+  if (liff.isLoggedIn()) return;
+  const redirectUri = stripRedirectUri();
+  if (liff.isInClient()) {
+    liff.login();
+  } else {
+    liff.login({ withLoginOnExternalBrowser: true, redirectUri });
+  }
+  return new Promise(()=>{});
+}
+
+function buildAuthHeaders(){
+  const idToken = sessionStorage.getItem('line_id_token') || liff.getIDToken();
+  const access  = sessionStorage.getItem('line_access_token') || liff.getAccessToken();
+  const h = { 'Content-Type': 'application/json' };
+  if (idToken && idToken.includes('.')) h['x-line-id-token'] = idToken;
+  else if (access) h['x-line-access-token'] = access;
+  else throw new Error('No LINE token available');
+  return h;
+}
+
+async function authedGet(url){
+  const r = await fetch(url, { headers: buildAuthHeaders() });
+  const t = await r.text(); let j; try{ j = JSON.parse(t); }catch{ throw new Error(`HTTP ${r.status}: ${t}`); }
+  if (!r.ok || j.error) throw new Error(j.error || t);
+  return j;
+}
+
+async function authedPost(url, body){
+  const r = await fetch(url, { method:'POST', headers: buildAuthHeaders(), body: JSON.stringify(body||{}) });
+  const t = await r.text(); let j; try{ j = JSON.parse(t); }catch{ throw new Error(`HTTP ${r.status}: ${t}`); }
+  if (!r.ok || j.errors) throw new Error(j.errors ? JSON.stringify(j.errors) : t);
+  return j;
+}
+
+/* ===================== Formatters (DKPI) ===================== */
+const formatPh   = p => (p==null || Number.isNaN(+p)) ? '—' : (+p).toFixed(1);
+const formatTemp = t => (t==null || Number.isNaN(+t)) ? '—' : `${(+t).toFixed(1)}°C`;
+function formatWater(w){
+  if (w==null || Number.isNaN(+w)) return '—';
+  const n = +w;
+  if (n <= 1)   return `${Math.round(n*100)}%`; // 0..1
+  if (n <= 100) return `${Math.round(n)}%`;     // 0..100
+  return String(n);
+}
+
+/* ===================== APIs (Progress/Shadow) ===================== */
+async function getProgress(deviceId){
+  const url = `${FIREBASE_PROGRESS_URL}?deviceId=${encodeURIComponent(deviceId)}`;
+  const r = await fetch(url, { cache:'no-store' }); 
+  const j = await r.json();
+  if (!r.ok || j.error) throw new Error(j.error || JSON.stringify(j));
+  return j; // {percent, level, goodNow, ...}
+}
+
+async function loadProgress(deviceId){
+  const data = await getProgress(deviceId);
+  const pct = typeof data.percent === 'number' ? Math.max(0, Math.min(100, data.percent)) : null;
+  const lvl = normalizeLevel(data.level);
+  const good = ('Status' in data) ? !!data.Status : !!data.goodNow;
+  const updated = pickUpdated(data);
+
+  if (pctTop) pctTop.textContent = pct!=null ? pct.toFixed(1) : '—';
+  if (barFill) barFill.style.width = pct!=null ? `${pct}%` : '0%';
+  if (growthLevel) growthLevel.textContent = lvl;
+  if (cta){
+    cta.textContent = good ? 'Ready!' : 'Not Ready Yet';
+    cta.classList.toggle('ready', good);
+  }
+  if (statusEl) statusEl.textContent = `Updated: ${updated}`;
+}
+
+async function loadShadow(deviceId){
+  const Q = 'query($deviceid:String!){ shadow(deviceid:$deviceid){ deviceid rev modified data } }';
+  const r = await authedPost('/api/gql', { query: Q, variables: { deviceid: deviceId }});
+  if (out) out.textContent = JSON.stringify(r.data, null, 2);   // debug (ซ่อนใน UI จริง)
+  const data = r?.data?.shadow?.data || {};
+
+  const chl  = getNum(data, ['chloro','chlorophyll','par','ndvi','leaf']);
+  const ph   = getNum(data, ['soil_ph','pH','ph']);
+  const temp = getNum(data, ['temp','temperature','temp_c']);
+  const ec   = getNum(data, ['soil_ec','ec','conductivity']);
+
+  setMetric(metricEls.chl,  chl!=null ? +chl.toFixed(1) : null);
+  setMetric(metricEls.ph,   ph!=null ? +ph.toFixed(2) : null);
+  setMetric(metricEls.temp, temp!=null ? +temp.toFixed(1) : null, '°C');
+  setMetric(metricEls.ec,   ec!=null ? +ec.toFixed(3) : null);
+
+  // อัปเดตซีรีส์ + วาดกราฟ
+  updateSeries(deviceId, typeof ph==='number'?ph:null, typeof temp==='number'?temp:null);
+  drawSpark(deviceId);
+
+  return { data, ph, temp };
+}
+
+/* ===================== DKPI (บน Hero) ===================== */
+async function renderDkpiForDevice(deviceId){
+  const Q = 'query($deviceid:String!){ shadow(deviceid:$deviceid){ data } }';
+  const r = await authedPost('/api/gql', { query: Q, variables: { deviceid: deviceId }});
+  const data = r?.data?.shadow?.data || {};
+
+  const water = getNum(data, ['water_level','water','level','wl','water_percent','waterPct']);
+  const ph    = getNum(data, ['soil_ph','pH','ph']);
+  const temp  = getNum(data, ['temp','temperature','temp_c']);
+
+  $('dkpi-water') && ($('dkpi-water').textContent = formatWater(water));
+  $('dkpi-ph')    && ($('dkpi-ph').textContent    = formatPh(ph));
+  $('dkpi-temp')  && ($('dkpi-temp').textContent  = formatTemp(temp));
+
+  localStorage.setItem('deviceId', deviceId);
+}
+
+/* ===================== Sparkline (pH & Temp) ===================== */
+const SERIES_MAX = 120; // เก็บจุดล่าสุด ~120 จุด
+function seriesKey(deviceId){ return 'series_' + deviceId; }
+function loadSeries(deviceId){
+  try{ return JSON.parse(localStorage.getItem(seriesKey(deviceId))) || {t:[], ph:[], temp:[]}; }
+  catch{ return {t:[], ph:[], temp:[]}; }
+}
+function saveSeries(deviceId, s){ localStorage.setItem(seriesKey(deviceId), JSON.stringify(s)); }
+function updateSeries(deviceId, ph, temp){
+  if (!deviceId || (ph==null && temp==null)) return;
+  const s = loadSeries(deviceId);
+  const now = Date.now();
+  if (s.t.length && now - s.t[s.t.length-1] < 50*1000) {
+    if (typeof ph   === 'number') s.ph[s.ph.length-1]     = ph;
+    if (typeof temp === 'number') s.temp[s.temp.length-1] = temp;
+  } else {
+    s.t.push(now); s.ph.push(typeof ph==='number'?ph:null); s.temp.push(typeof temp==='number'?temp:null);
+  }
+  while (s.t.length > SERIES_MAX){ s.t.shift(); s.ph.shift(); s.temp.shift(); }
+  saveSeries(deviceId, s);
+}
+function drawSpark(deviceId){
+  const c = document.getElementById('spark'); if (!c) return;
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = c.clientWidth || 600, cssH = 180;
+  c.width = Math.floor(cssW * dpr); c.height = Math.floor(cssH * dpr);
+  const ctx = c.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,cssW,cssH);
+
+  const s = loadSeries(deviceId);
+  const n = s.t.length; if (!n) return;
+
+  const pad = {l:36, r:6, t:12, b:18};
+  const iw = cssW - pad.l - pad.r, ih = cssH - pad.t - pad.b;
+  const idxs = [...Array(n).keys()];
+
+  const phVals = s.ph.filter(v=>typeof v==='number');
+  const phMin = phVals.length ? Math.min(5, ...phVals) : 5;
+  const phMax = phVals.length ? Math.max(9, ...phVals) : 9;
+
+  const tVals = s.temp.filter(v=>typeof v==='number');
+  const tMin = tVals.length ? Math.min(20, ...tVals) : 20;
+  const tMax = tVals.length ? Math.max(35, ...tVals) : 35;
+
+  const xAt = i => pad.l + (i/(Math.max(1,n-1))) * iw;
+  const yAt = (val,min,max) => pad.t + (1 - ((val-min)/(max-min || 1))) * ih;
+
+  // grid
+  ctx.strokeStyle = '#e5efe9'; ctx.lineWidth = 1;
+  for (let g=0; g<=4; g++){ const y = pad.t + g*(ih/4); ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+iw,y); ctx.stroke(); }
+
+  // pH line (green)
+  ctx.strokeStyle = '#16a34a'; ctx.lineWidth = 2; ctx.beginPath();
+  let moved=false;
+  idxs.forEach(i=>{
+    const v = s.ph[i]; if (typeof v!=='number') return;
+    const x=xAt(i), y=yAt(v,phMin,phMax);
+    if (!moved){ ctx.moveTo(x,y); moved=true; } else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+
+  // Temp line (blue)
+  ctx.strokeStyle = '#2563eb'; ctx.lineWidth = 2; ctx.beginPath();
+  moved=false;
+  idxs.forEach(i=>{
+    const v = s.temp[i]; if (typeof v!=='number') return;
+    const x=xAt(i), y=yAt(v,tMin,tMax);
+    if (!moved){ ctx.moveTo(x,y); moved=true; } else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+
+  // labels
+  ctx.fillStyle = '#4b6a5d'; ctx.font = '12px system-ui';
+  ctx.fillText(`pH ${phMin.toFixed(1)}–${phMax.toFixed(1)}`, pad.l, 12);
+  ctx.textAlign='right';
+  ctx.fillText(`Temp ${tMin.toFixed(0)}–${tMax.toFixed(0)}°C`, pad.l+iw, 12);
+}
+
+/* ===================== Dashboard (Desktop) ===================== */
+async function renderDashboard(){
+  if (!window.matchMedia('(min-width:960px)').matches) return;
+  const dash = $('dashboard'); if (dash) dash.hidden = false;
+
+  const resp = await authedGet('/api/devices');
+  const devices = Array.isArray(resp?.devices) ? resp.devices : [];
+
+  const tbody = document.querySelector('#dash-table tbody'); 
+  if (tbody) tbody.innerHTML = '';
+
+  for (const d of devices){
+    const tr = document.createElement('tr');
+    const td = v => { const el=document.createElement('td'); el.textContent=v; return el; };
+
+    let percentTxt = '—', health='—', dotCls='bad';
+    try{
+      const p = await getProgress(d.deviceId);
+      if (typeof p.percent === 'number'){
+        const pct = Math.round(p.percent);
+        percentTxt = `${pct}%`;
+        health = (pct>=80?'A+':pct>=60?'B':'C');
+        dotCls = (pct>=80?'ok':pct>=60?'warn':'bad');
+      }
+    }catch{}
+
+    let phTxt='—', tempTxt='—';
+    try{
+      const Q='query($deviceid:String!){ shadow(deviceid:$deviceid){ data } }';
+      const r=await authedPost('/api/gql',{query:Q,variables:{deviceid:d.deviceId}});
+      const data=r?.data?.shadow?.data || {};
+      const _ph = getNum(data,['soil_ph','pH','ph']);             if (typeof _ph === 'number') phTxt   = _ph.toFixed(1);
+      const _t  = getNum(data,['temp','temperature','temp_c']);   if (typeof _t === 'number') tempTxt = _t.toFixed(1)+'°C';
+    }catch{}
+
+    const healthTd=document.createElement('td');
+    const wrap=document.createElement('div'); wrap.className='dash-health';
+    const dot=document.createElement('span'); dot.className='dot '+dotCls;
+    const badge=document.createElement('span'); badge.className='dash-badge'; badge.textContent=health;
+    wrap.append(dot,' ',badge); healthTd.appendChild(wrap);
+
+    tr.append(healthTd, td(d.name||d.deviceId), td(percentTxt), td(phTxt), td(tempTxt));
+
+    const btn=document.createElement('button'); btn.className='dash-btn'; btn.textContent='Select';
+    btn.onclick = () => renderDkpiForDevice(d.deviceId).catch(console.error);
+    const action=document.createElement('td'); action.appendChild(btn); tr.appendChild(action);
+
+    tbody && tbody.appendChild(tr);
+  }
+
+  const initial = localStorage.getItem('deviceId') || devices[0]?.deviceId;
+  if (initial) await renderDkpiForDevice(initial);
+}
+
+/* ===================== Boot ===================== */
+window.addEventListener('DOMContentLoaded', async () => {
+  try{
+    await liff.init({ liffId: LIFF_ID });
+    await ensureLogin();
+
+    // clear LIFF query
+    {
+      const qs = new URLSearchParams(location.search);
+      if (qs.get('code') || qs.get('liffRedirectUri')) {
+        history.replaceState({}, '', stripRedirectUri());
+      }
+    }
+
+    // cache token
+    const idToken = liff.getIDToken();
+    const accessToken = liff.getAccessToken();
+    if (idToken) sessionStorage.setItem('line_id_token', idToken);
+    if (accessToken) sessionStorage.setItem('line_access_token', accessToken);
+
+    const sel = $('deviceSelect');
+
+    // โหลดรายการอุปกรณ์
+    let devices = [];
+    try{
+      const resp = await authedGet('/api/devices');
+      devices = Array.isArray(resp?.devices) ? resp.devices : [];
+    }catch(e){ showError(e); }
+
+    if (sel){
       sel.innerHTML = '';
       if (devices.length === 0){
         const op = document.createElement('option');
@@ -311,128 +477,45 @@
         const saved = localStorage.getItem('deviceId');
         if (saved && [...sel.options].some(o=>o.value===saved)) sel.value = saved;
       }
+    }
 
-      async function refreshAll(){
-        if (!sel.value) { statusEl.textContent = 'Select a device first'; return; }
-        statusEl.textContent = 'Loading…';
-        try{
-          await loadShadow(sel.value);
-          await loadProgress(sel.value);
-          statusEl.textContent = 'Updated';
-        }catch(e){ showError(e); }
-      }
+    async function refreshAll(){
+      if (!sel?.value) { if (statusEl) statusEl.textContent = 'Select a device first'; return; }
+      if (statusEl) statusEl.textContent = 'Loading…';
+      try{
+        await loadShadow(sel.value);
+        await loadProgress(sel.value);
+        if (statusEl) statusEl.textContent = 'Updated';
+      }catch(e){ showError(e); }
+    }
 
-      $('refreshBtn').onclick = refreshAll;
-sel.onchange = async ()=>{
-  localStorage.setItem('deviceId', sel.value || '');
-  await refreshAll();                                  // มือถือ/การ์ด metric เดิม
-  if (window.matchMedia('(min-width:960px)').matches && sel.value){
-    renderDkpiForDevice(sel.value).catch(console.error); // อัปเดต DKPI ของ dashboard
-  }
-};
+    $('refreshBtn') && ($('refreshBtn').onclick = refreshAll);
 
+    sel && (sel.onchange = async ()=>{
+      localStorage.setItem('deviceId', sel.value || '');
       await refreshAll();
-      setInterval(()=> sel.value && loadProgress(sel.value).catch(showError), 60000);
-    }catch(e){ showError(e); }
-  });
-
-  async function getProgress(deviceId){
-  const url = `${FIREBASE_PROGRESS_URL}?deviceId=${encodeURIComponent(deviceId)}`;
-  const r = await fetch(url, { cache:'no-store' }); const j = await r.json();
-  if (!r.ok || j.error) throw new Error(j.error || JSON.stringify(j));
-  return j; // {percent, level, goodNow, ...}
-}
-function td(v){ const el=document.createElement('td'); el.textContent=v; return el; }
-
-async function renderDashboard(){
-  // แสดงเฉพาะจอ >= 960px
-  if (!window.matchMedia('(min-width:960px)').matches) return;
-  $('dashboard').hidden = false;
-
-  // 1) โหลดอุปกรณ์
-  const resp = await authedGet('/api/devices');
-  const devices = Array.isArray(resp?.devices) ? resp.devices : [];
-
-  // 2) เติมตารางบ่อ + ปุ่ม Select ที่ผูก DKPI
-  const tbody = document.querySelector('#dash-table tbody'); 
-  tbody.innerHTML = '';
-
-  for (const d of devices){
-    const tr = document.createElement('tr');
-    const td = v => { const el=document.createElement('td'); el.textContent=v; return el; };
-
-    // progress → ใช้ให้เห็น health/percent ในตาราง
-    let percentTxt = '—', health='—', dotCls='bad';
-    try{
-      const p = await getProgress(d.deviceId);
-      if (typeof p.percent === 'number'){
-        const pct = Math.round(p.percent);
-        percentTxt = `${pct}%`;
-        health = (pct>=80?'A+':pct>=60?'B':'C');
-        dotCls = (pct>=80?'ok':pct>=60?'warn':'bad');
+      if (window.matchMedia('(min-width:960px)').matches && sel.value){
+        renderDkpiForDevice(sel.value).catch(console.error);
       }
-    }catch{}
+    });
 
-    // shadow → ค่า pH / Temp ในตาราง (DKPI จะดึงอีกทีตอนเลือก)
-    let phTxt='—', tempTxt='—';
-    try{
-      const Q='query($deviceid:String!){ shadow(deviceid:$deviceid){ data } }';
-      const r=await authedPost('/api/gql',{query:Q,variables:{deviceid:d.deviceId}});
-      const data=r?.data?.shadow?.data || {};
-      const _ph = getNum(data,['soil_ph','pH','ph']);      if (typeof _ph === 'number') phTxt   = _ph.toFixed(1);
-      const _t  = getNum(data,['temp','temperature','temp_c']); if (typeof _t === 'number') tempTxt = _t.toFixed(1)+'°C';
-    }catch{}
+    await refreshAll();
 
-    // เซลสุขภาพ
-    const healthTd=document.createElement('td');
-    const wrap=document.createElement('div'); wrap.className='dash-health';
-    const dot=document.createElement('span'); dot.className='dot '+dotCls;
-    const badge=document.createElement('span'); badge.className='dash-badge'; badge.textContent=health;
-    wrap.append(dot,' ',badge); healthTd.appendChild(wrap);
+    // refresh ทุก 60 วิ
+    setInterval(()=> {
+      if (!sel?.value) return;
+      loadProgress(sel.value).catch(showError);
+      loadShadow(sel.value).catch(showError);
+    }, 60000);
 
-    tr.append(healthTd, td(d.name||d.deviceId), td(percentTxt), td(phTxt), td(tempTxt));
+    // dashboard (desktop)
+    setTimeout(()=>renderDashboard().catch(console.error), 500);
 
-    // ปุ่มเลือก device → อัปเดต DKPI ด้านบน
-    const btn=document.createElement('button'); btn.className='dash-btn'; btn.textContent='Select';
-    btn.onclick = () => renderDkpiForDevice(d.deviceId).catch(console.error);
-    const action=document.createElement('td'); action.appendChild(btn); tr.appendChild(action);
+    // วาดกราฟครั้งแรกจากซีรีส์เดิม (ถ้ามี)
+    if (sel?.value) drawSpark(sel.value);
 
-    tbody.appendChild(tr);
-  }
-
-  // 3) ค่าเริ่มต้น: device ล่าสุดที่เคยเลือก หรือ ตัวแรกในลิสต์
-  const initial = localStorage.getItem('deviceId') || devices[0]?.deviceId;
-  if (initial) await renderDkpiForDevice(initial);
-} 
-
-const formatPh   = p => (p==null || Number.isNaN(+p)) ? '—' : (+p).toFixed(1);
-const formatTemp = t => (t==null || Number.isNaN(+t)) ? '—' : `${(+t).toFixed(1)}°C`;
-function formatWater(w){
-  if (w==null || Number.isNaN(+w)) return '—';
-  const n = +w;
-  if (n <= 1)   return `${Math.round(n*100)}%`; // เผื่อเป็นสัดส่วน 0..1
-  if (n <= 100) return `${Math.round(n)}%`;     // เผื่อเป็นเปอร์เซ็นต์ 0..100
-  return String(n);                              // เผื่อหน่วยอื่น
-}
-
-/** ดึง shadow.data ของ device แล้วอัปเดต DKPI บน hero */
-async function renderDkpiForDevice(deviceId){
-  const Q = 'query($deviceid:String!){ shadow(deviceid:$deviceid){ data } }';
-  const r = await authedPost('/api/gql', { query: Q, variables: { deviceid: deviceId }});
-  const data = r?.data?.shadow?.data || {};
-
-  // พยายามหา key ตามชื่อที่พบบ่อย
-  const water = getNum(data, ['water_level','water','level','wl','water_percent','waterPct']);
-  const ph    = getNum(data, ['soil_ph','pH','ph']);
-  const temp  = getNum(data, ['temp','temperature','temp_c']);
-
-  $('dkpi-water').textContent = formatWater(water);
-  $('dkpi-ph').textContent    = formatPh(ph);
-  $('dkpi-temp').textContent  = formatTemp(temp);
-
-  // จำ device ล่าสุด
-  localStorage.setItem('deviceId', deviceId);
-}
-  </script>
+  }catch(e){ showError(e); }
+});
+</script>
 </body>
 </html>

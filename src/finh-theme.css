@@ -308,3 +308,7 @@ pre.log{
 .dash-table th{ font-size:13px; color:#4b6a5d }
 .dash-health{ display:flex; align-items:center; gap:8px }
 .dash-badge{ padding:4px 8px; border-radius:999px; font-size:12px; border:1px solid #e0eee6; background:#f3faf6 }
+
+/* Spark canvas should fill card width */
+.dash-spark canvas{ width:100%; height:180px; display:block; }
+
