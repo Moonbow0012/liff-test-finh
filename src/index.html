@@ -34,22 +34,6 @@
           <div class="pct"><span id="pctTopDash">0</span>%</div>
         </div>
 
-        <!-- DKPI -->
-        <div class="dash-kpis">
-  <!-- Water -->
-  <div class="dkpi kpi-water">
-    <span class="kpi-ic" aria-hidden="true">
-      <!-- drop icon -->
-      <svg viewBox="0 0 24 24" fill="currentColor">
-        <path d="M12 2C9 7 6 9.8 6 13.2A6 6 0 0 0 18 13.2C18 9.8 15 7 12 2z"/>
-      </svg>
-    </span>
-    <span class="kpi-txt">
-      <small>Water</small>
-      <b id="dkpi-water">—</b>
-    </span>
-  </div>
-
   <!-- pH -->
 <div class="dash-kpis">
   <!-- Water -->
@@ -178,7 +162,7 @@ async function authedPost(url, body){
 }
 
 /* ========== Formatters (DKPI) ========== */
-const formatPh   = p => (p==null || Number.isNaN(+p)) ? '—' : (+p).toFixed(1);
+const formatPh   = p => (p==null || Number.isNaN(+p)) ? '—' : `${(+p).toFixed(1)} pH`;
 const formatTemp = t => (t==null || Number.isNaN(+t)) ? '—' : `${(+t).toFixed(1)}°C`;
 function formatWater(w){
   if (w==null || Number.isNaN(+w)) return '—';
