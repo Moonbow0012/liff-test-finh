@@ -16,8 +16,6 @@
   <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
 <body>
-
-  <!-- Top bar -->
   <header class="topbar">
     <div class="brand"><img src="./assets/finh_logo.png" alt="FINH"></div>
     <div class="right">
@@ -27,60 +25,7 @@
       <button id="refreshBtn" class="icon-btn" title="Refresh">⟳</button>
     </div>
   </header>
-
-  <main class="wrap">
-    <!-- Hero + Title -->
-    <div class="hero"><img src="./assets/organic.png" alt="organic"></div>
-    <div class="center">
-      <div class="title">Peak Protein</div>
-      <div class="sub">Level <span id="growthLevel">-</span></div>
-    </div>
-
-    <!-- Progress -->
-    <div class="progress-lite">
-      <div class="track"><div id="barFill" class="fill"></div></div>
-      <div class="pct"><span id="pctTop">0</span>%</div>
-    </div>
-
-    <!-- Status Card -->
-    <section class="card" id="statusCard">
-      <h3>Status</h3>
-      <ul class="metrics">
-        <li>
-          <div class="metric-left">
-            <div class="ic">🍃</div><div>Chlorophyll</div>
-          </div>
-          <div class="val" id="mChl">—</div>
-        </li>
-        <li>
-          <div class="metric-left">
-            <div class="ic">💧</div><div>Soil pH</div>
-          </div>
-          <div class="val" id="mPh">—</div>
-        </li>
-        <li>
-          <div class="metric-left">
-            <div class="ic">🌡️</div><div>Temp</div>
-          </div>
-          <div class="val" id="mTemp">—</div>
-        </li>
-        <li>
-          <div class="metric-left">
-            <div class="ic">⚡</div><div>Soil EC</div>
-          </div>
-          <div class="val" id="mEc">—</div>
-        </li>
-      </ul>
-    </section>
-
-    <!-- Big CTA -->
-    <button id="ctaState" class="cta">Not Ready Yet</button>
-
-    <!-- แสดงสถานะโหลด + debug -->
-    <div id="status" style="color:#fff; margin:10px 4px;"></div>
-    <pre id="out" class="log">—</pre>
-  </main>
-  <section class="dashboard" id="dashboard" hidden>
+<section class="dashboard" id="dashboard" hidden>
 <div class="dash-hero">
   <div>
     <h1>Overview</h1>
@@ -149,6 +94,9 @@ const FIREBASE_PROGRESS_URL = 'https://getprogress-iyipepekja-as.a.run.app';
 const $ = (id) => document.getElementById(id);
 const statusEl = $('status');
 const out = $('out');
+const barFillDash = $('barFillDash');
+const pctTopDash = $('pctTopDash');
+const growthLevelDash = $('growthLevelDash');
 
 const barFill = $('barFill');
 const pctTop = $('pctTop');
@@ -273,25 +221,15 @@ async function loadProgress(deviceId){
   const data = await getProgress(deviceId);
   const pct = typeof data.percent === 'number' ? Math.max(0, Math.min(100, data.percent)) : null;
   const lvl = normalizeLevel(data.level);
-  const good = ('Status' in data) ? !!data.Status : !!data.goodNow;
   const updated = pickUpdated(data);
 
-  // มือถือ (UI เดิมใน .wrap)
-  if (pctTop) pctTop.textContent = pct!=null ? pct.toFixed(1) : '—';
-  if (barFill) barFill.style.width = pct!=null ? `${pct}%` : '0%';
-  if (growthLevel) growthLevel.textContent = lvl;
+  if (pctTopDash) pctTopDash.textContent = pct!=null ? pct.toFixed(1) : '—';
+  if (barFillDash) barFillDash.style.width = pct!=null ? `${pct}%` : '0%';
+  if (growthLevelDash) growthLevelDash.textContent = lvl;
 
-  // เดสก์ท็อป (ใต้ Overview)
-  if (pctTopDash) pctTopDash.textContent = pct!=null ? pct.toFixed(1) : '—';   // mirror to dashboard
-  if (barFillDash) barFillDash.style.width = pct!=null ? `${pct}%` : '0%';     // mirror to dashboard
-  if (growthLevelDash) growthLevelDash.textContent = lvl;                       // mirror to dashboard
-
-  if (cta){
-    cta.textContent = good ? 'Ready!' : 'Not Ready Yet';
-    cta.classList.toggle('ready', good);
-  }
   if (statusEl) statusEl.textContent = `Updated: ${updated}`;
 }
+
 
 async function loadShadow(deviceId){
   const Q = 'query($deviceid:String!){ shadow(deviceid:$deviceid){ deviceid rev modified data } }';
@@ -303,11 +241,6 @@ async function loadShadow(deviceId){
   const ph   = getNum(data, ['soil_ph','pH','ph']);
   const temp = getNum(data, ['temp','temperature','temp_c']);
   const ec   = getNum(data, ['soil_ec','ec','conductivity']);
-
-  setMetric(metricEls.chl,  chl!=null ? +chl.toFixed(1) : null);
-  setMetric(metricEls.ph,   ph!=null ? +ph.toFixed(2) : null);
-  setMetric(metricEls.temp, temp!=null ? +temp.toFixed(1) : null, '°C');
-  setMetric(metricEls.ec,   ec!=null ? +ec.toFixed(3) : null);
 
   // อัปเดตซีรีส์ + วาดกราฟ
   updateSeries(deviceId, typeof ph==='number'?ph:null, typeof temp==='number'?temp:null);
