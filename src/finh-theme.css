@@ -309,17 +309,6 @@ pre.log{
 .dash-health{ display:flex; align-items:center; gap:8px }
 .dash-badge{ padding:4px 8px; border-radius:999px; font-size:12px; border:1px solid #e0eee6; background:#f3faf6 }
 
-
-.dash-plant{
-  display:block;
-  align-self:end; justify-self:end;
-  width:min(420px,100%); aspect-ratio:4/3; border-radius:18px;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.15), rgba(0,0,0,.12)),
-    url("./assets/organic.png") center/cover no-repeat;
-  box-shadow:0 14px 40px rgba(0,0,0,.28);
-}
-
 /* การ์ดซ้าย (Growth analytics) โทนเข้ม */
 .dash-card.growth{
   color:#e9f6ee;
@@ -336,7 +325,7 @@ pre.log{
 
 /* การ์ดกลาง (Critical Alerts) โทนเหลือง */
 .dash-card.alerts{
-  background:#ffefad; border-color:#ffe37a; color:#573d00;
+  background:#ffcc00; color:#573d00;
 }
 .dash-alerts{ list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:10px }
 .dash-alerts li{
