@@ -83,13 +83,6 @@ html,body{
 }
 @keyframes slide{ 0%{background-position-x:0} 100%{background-position-x:28px} }
 
-/* KPIs */
-.dash-kpis{ display:flex; gap:12px; flex-wrap:wrap; margin-top:8px; }
-.dkpi{
-  padding:10px 12px; border-radius:12px; backdrop-filter: blur(4px);
-}
-.dkpi b{ font-size:18px }
-
 .dash-kpis{
   display:flex; gap:28px; flex-wrap:wrap; margin-top:14px;
 }

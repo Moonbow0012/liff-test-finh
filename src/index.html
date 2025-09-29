@@ -162,7 +162,7 @@ async function authedPost(url, body){
 }
 
 /* ========== Formatters (DKPI) ========== */
-const formatPh   = p => (p==null || Number.isNaN(+p)) ? '—' : `${(+p).toFixed(1)} pH`;
+const formatPh   = p => (p==null || Number.isNaN(+p)) ? '—' : (+p).toFixed(1);
 const formatTemp = t => (t==null || Number.isNaN(+t)) ? '—' : `${(+t).toFixed(1)}°C`;
 function formatWater(w){
   if (w==null || Number.isNaN(+w)) return '—';
