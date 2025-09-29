@@ -86,7 +86,6 @@ html,body{
 /* KPIs */
 .dash-kpis{ display:flex; gap:12px; flex-wrap:wrap; margin-top:8px; }
 .dkpi{
-  background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.25);
   padding:10px 12px; border-radius:12px; backdrop-filter: blur(4px);
 }
 .dkpi b{ font-size:18px }
@@ -103,7 +102,7 @@ html,body{
 .dash-spark canvas{ width:100%; height:220px; display:block; }
 
 /* Alerts (yellow) */
-.dash-card.alerts{ color:#000; }
+.dash-card.alerts{ background:#ffbf00; color:#000; }
 .dash-alerts{ list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:10px; }
 .dash-alerts li{ display:flex; align-items:center; gap:10px; border-radius:12px; padding:10px 12px; }
 .dash-alerts .ok,.dash-alerts .warn,.dash-alerts .bad{ width:10px; height:10px; border-radius:50% }
