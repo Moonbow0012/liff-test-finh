@@ -113,3 +113,58 @@ html,body{
 .dash-activity{ display:flex; flex-direction:column; gap:10px; }
 .dash-evt{ display:flex; justify-content:space-between; align-items:center; background:#f8fbf9; border:1px solid #e6f3e8; border-radius:12px; padding:10px 12px; }
 .dash-btn{ border:0; border-radius:10px; padding:6px 10px; background:#e8f1ec; color:#174834; }
+
+/* ===== Responsive (Tablets & Phones) ===== */
+
+/* ≤ 1024px: ลดระยะและให้ panels เป็น 1 คอลัมน์ */
+@media (max-width: 1024px){
+  .dashboard{ padding:14px; }
+  .dash-panels{ grid-template-columns: 1fr; gap:14px; }
+  .dash-hero{ padding:22px; border-radius:20px; }
+  .dash-hero h1{ font-size:38px; }
+  .dash-card{ padding:14px; border-radius:14px; }
+  .dash-card h3{ font-size:17px; }
+  .dash-card.growth .dash-spark,
+  .dash-spark canvas{ height:200px; }
+}
+
+/* ≤ 640px: layout มือถือ */
+@media (max-width: 640px){
+  /* top bar */
+  .topbar{ padding:10px 12px; }
+  .brand img{ height:42px; }
+  .topbar select{ font-size:12px; padding:6px 10px; max-width:55vw; }
+  .icon-btn{ padding:6px 8px; }
+
+  /* hero */
+  .dash-hero{ padding:16px; border-radius:18px; gap:10px; }
+  .dash-hero h1{ font-size:32px; line-height:1.1; margin-bottom:4px; }
+  .dash-level{ font-size:14px; }
+
+  /* progress + pct */
+  :root{ --bar-h: 12px; }
+  .progress-lite{ gap:8px; }
+  .pct{ padding:4px 8px; min-width:48px; font-size:12px; }
+
+  /* KPI pills */
+  .dash-kpis{ gap:8px; margin-top:8px; }
+  .dkpi{ padding:8px 10px; }
+  .dkpi b{ font-size:16px; }
+
+  /* cards */
+  .dash-card{ padding:12px; }
+  .dash-card h3{ font-size:16px; }
+  .dash-card.growth .dash-spark,
+  .dash-spark canvas{ height:170px; }
+
+  /* activity rows */
+  .dash-evt{ padding:8px 10px; }
+  .dash-btn{ padding:6px 8px; }
+}
+
+/* ≤ 400px: ถ้าพื้นที่แคบให้ pct ลงบรรทัดใหม่อัตโนมัติ */
+@media (max-width: 400px){
+  .progress-lite{ flex-wrap: wrap; }
+  .pct{ margin-left:0; margin-top:6px; }
+}
+
