@@ -36,12 +36,48 @@
 
         <!-- DKPI -->
         <div class="dash-kpis">
-          <div class="dkpi"><small>Water </small><b id="dkpi-water">—</b></div>
-          <div class="dkpi"><small>pH Level </small><b id="dkpi-ph">—</b></div>
-          <div class="dkpi"><small>Temperature (°C) </small><b id="dkpi-temp">—</b></div>
-        </div>
-      </div>
-    </div>
+  <!-- Water -->
+  <div class="dkpi kpi-water">
+    <span class="kpi-ic" aria-hidden="true">
+      <!-- drop icon -->
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2C9 7 6 9.8 6 13.2A6 6 0 0 0 18 13.2C18 9.8 15 7 12 2z"/>
+      </svg>
+    </span>
+    <span class="kpi-txt">
+      <small>Water</small>
+      <b id="dkpi-water">—</b>
+    </span>
+  </div>
+
+  <!-- pH -->
+  <div class="dkpi kpi-ph">
+    <span class="kpi-ic" aria-hidden="true">
+      <!-- beaker icon -->
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <path d="M7 3h10v2h-4v4l3.6 7.2A2 2 0 0 1 14.8 19H9.2a2 2 0 0 1-1.8-2.8L11 9V5H7z"/>
+      </svg>
+    </span>
+    <span class="kpi-txt">
+      <small>pH Level</small>
+      <b id="dkpi-ph">—</b>
+    </span>
+  </div>
+
+  <!-- Temperature -->
+  <div class="dkpi kpi-temp">
+    <span class="kpi-ic" aria-hidden="true">
+      <!-- thermometer icon -->
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <path d="M13 14.8V6a1 1 0 0 0-2 0v8.8a4 4 0 1 0 2 0z"/>
+      </svg>
+    </span>
+    <span class="kpi-txt">
+      <small>Temperature (°C)</small>
+      <b id="dkpi-temp">—</b>
+    </span>
+  </div>
+</div>
 
     <!-- Panels -->
     <div class="dash-panels">

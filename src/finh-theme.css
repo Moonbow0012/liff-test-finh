@@ -90,6 +90,38 @@ html,body{
 }
 .dkpi b{ font-size:18px }
 
+/* ===== DKPI: icon + label-top/value-bottom ===== */
+.dash-kpis{ display:flex; gap:12px; flex-wrap:wrap; margin-top:8px; }
+
+.dkpi{
+  display:flex; align-items:center; gap:10px;
+  padding:10px 12px; border-radius:12px;
+  background: rgba(255,255,255,.10);
+  border: 1px solid rgba(255,255,255,.25);
+  backdrop-filter: blur(4px);
+}
+
+.kpi-ic{ width:18px; height:18px; display:inline-flex; color:#fff; opacity:.95; }
+.kpi-ic svg{ width:18px; height:18px; display:block; }
+
+/* ข้อความ: จัดแนวเป็นคอลัมน์ (label ด้านบน, value ด้านล่าง) */
+.kpi-txt{ display:flex; flex-direction:column; line-height:1.1; }
+.dkpi small{ font-weight:600; opacity:.95; }
+.dkpi b{ font-size:20px; margin-top:2px; }
+
+/* โทนสีไอคอนตามชนิด */
+.kpi-water .kpi-ic{ color:#7dd3fc; }   /* น้ำ */
+.kpi-ph    .kpi-ic{ color:#a78bfa; }   /* บีกเกอร์/ค่ากรด-ด่าง */
+.kpi-temp  .kpi-ic{ color:#fdba74; }   /* อุณหภูมิ */
+
+/* มือถือ: ย่อฟอนต์ลงเล็กน้อย */
+@media (max-width:640px){
+  .dkpi{ padding:8px 10px; gap:8px; }
+  .dkpi b{ font-size:18px; }
+  .kpi-ic, .kpi-ic svg{ width:16px; height:16px; }
+}
+
+
 /* Panels */
 .dash-panels{ display:grid; grid-template-columns:2fr 1.2fr 1.8fr; gap:16px; margin-top:14px; }
 .dash-card{ background:#fff; border:1px solid var(--finh-slate-200); border-radius:var(--radius); padding:16px; box-shadow:var(--shadow); }
