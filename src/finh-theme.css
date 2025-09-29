@@ -325,7 +325,7 @@ pre.log{
 
 /* การ์ดกลาง (Critical Alerts) โทนเหลือง */
 .dash-card.alerts{
-  background:#ffcc00; color:#573d00;
+  background:#ffcc00; color:#000000;
 }
 .dash-alerts{ list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:10px }
 .dash-alerts li{
