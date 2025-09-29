@@ -84,10 +84,18 @@
 <div class="dash-hero">
   <div>
     <h1>Overview</h1>
+    <div class="dash-level">Level <span id="growthLevelDash" class="level">-</span></div>
+
+<div class="progress-lite dash-progress">
+  <div class="track">
+    <div id="barFillDash" class="fill"></div>
+  </div>
+  <div class="pct"><span id="pctTopDash">0</span>%</div>
+</div>
     <div class="dash-kpis">
       <div class="dkpi"><small>Water </small><b id="dkpi-water">—</b></div>
       <div class="dkpi"><small>pH Level </small><b id="dkpi-ph">—</b></div>
-      <div class="dkpi"><small>Temperature (°C)</small><b id="dkpi-temp">—</b></div>
+      <div class="dkpi"><small>Temperature (°C) </small><b id="dkpi-temp">—</b></div>
     </div>
   </div>
 </div>
@@ -98,7 +106,6 @@
   <div class="dash-card growth">
     <div style="display:flex;justify-content:space-between;align-items:center;">
       <h3>Growth analytics</h3>
-      <button class="dash-btn" onclick="/* ต่อเป็นหน้า details ภายหลังได้ */">Details</button>
     </div>
     <div class="dash-spark">
       <canvas id="spark" width="800" height="220" aria-label="pH & Temp chart"></canvas>
@@ -269,9 +276,16 @@ async function loadProgress(deviceId){
   const good = ('Status' in data) ? !!data.Status : !!data.goodNow;
   const updated = pickUpdated(data);
 
+  // มือถือ (UI เดิมใน .wrap)
   if (pctTop) pctTop.textContent = pct!=null ? pct.toFixed(1) : '—';
   if (barFill) barFill.style.width = pct!=null ? `${pct}%` : '0%';
   if (growthLevel) growthLevel.textContent = lvl;
+
+  // เดสก์ท็อป (ใต้ Overview)
+  if (pctTopDash) pctTopDash.textContent = pct!=null ? pct.toFixed(1) : '—';   // mirror to dashboard
+  if (barFillDash) barFillDash.style.width = pct!=null ? `${pct}%` : '0%';     // mirror to dashboard
+  if (growthLevelDash) growthLevelDash.textContent = lvl;                       // mirror to dashboard
+
   if (cta){
     cta.textContent = good ? 'Ready!' : 'Not Ready Yet';
     cta.classList.toggle('ready', good);

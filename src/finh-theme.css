@@ -330,11 +330,26 @@ pre.log{
 .dash-alerts{ list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:10px }
 .dash-alerts li{
   display:flex; align-items:center; gap:10px;
-  background:#fff8d7; border:1px solid #ffe58e;
   border-radius:12px; padding:10px 12px;
 }
 .dash-alerts .ok,.dash-alerts .warn,.dash-alerts .bad{ width:10px; height:10px; border-radius:50% }
 .dash-alerts .ok{ background:#16a34a } .dash-alerts .warn{ background:#f59e0b } .dash-alerts .bad{ background:#ef4444 }
 /* Spark canvas should fill card width */
 .dash-spark canvas{ width:100%; height:180px; display:block; }
+
+/* ใช้ UI หลอด/ระดับซ้ำกับมือถือ แต่จัดเลย์เอาต์ให้เข้ากับ hero */
+.dash-level{
+  margin-top:8px;
+  font-size:14px;
+  font-weight:800;
+  color:#ffffff;
+}
+
+.dash-hero .progress-lite{
+  width:100%;
+  margin:10px 0 0 0;
+  justify-content:flex-start;
+}
+.dash-hero .pct{ margin-left:10px; }
+
 
