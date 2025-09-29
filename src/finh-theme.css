@@ -103,11 +103,11 @@ html,body{
 .dash-spark canvas{ width:100%; height:220px; display:block; }
 
 /* Alerts (yellow) */
-.dash-card.alerts{ color:#000; }
+.dash-card.alerts{ background: #ffd500; color:#000; }
 .dash-alerts{ list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:10px; }
 .dash-alerts li{ display:flex; align-items:center; gap:10px; border-radius:12px; padding:10px 12px; background:#fff8d7; }
 .dash-alerts .ok,.dash-alerts .warn,.dash-alerts .bad{ width:10px; height:10px; border-radius:50% }
-.dash-alerts .ok{ background:#16a34a } .dash-alerts .warn{ background:#f59e0b } .dash-alerts .bad{ background:#ef4444 }
+.dash-alerts .ok{ background:#16a34a } .dash-alerts .warn .dash-alerts .bad{ background:#ef4444 }
 
 /* Activity */
 .dash-activity{ display:flex; flex-direction:column; gap:10px; }
