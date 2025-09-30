@@ -83,45 +83,44 @@ html,body{
 }
 @keyframes slide{ 0%{background-position-x:0} 100%{background-position-x:28px} }
 
-.dash-kpis{
-  display:flex; gap:28px; flex-wrap:wrap; margin-top:14px;
-}
+/* === KPI: icon + label same line, value on next line === */
+.dash-kpis{ display:flex; gap:28px; flex-wrap:wrap; margin-top:14px; }
+
+/* ใช้ grid 2 คอลัมน์: [icon][label] แถวแรก, แถวสองเป็นค่าตัวเลขกว้างทั้งสองคอลัมน์ */
 .dkpi{
-  display:flex; flex-direction:column; align-items:flex-start;
-  gap:6px; padding:0; background:transparent; border:0;
+  display:grid;
+  grid-template-columns: 22px auto;
+  grid-auto-rows: auto;
+  column-gap: 8px;
+  align-items: center;
+  background: transparent;
+  border: 0;
+  padding: 0;
 }
-.kpi-ic{
-  width:22px; height:22px; display:block;
+
+.dkpi .kpi-ic{
+  grid-column: 1; grid-row: 1;
+  width: 20px; height: 20px;
+  display: block;
   filter: drop-shadow(0 1px 1px rgba(0,0,0,.25));
   opacity: .95;
 }
+
 .dkpi small{
-  color:#ffffff; opacity:.95; font-weight:700; letter-spacing:.2px;
+  grid-column: 2; grid-row: 1;
+  color: #fff; font-weight: 700; letter-spacing: .2px;
 }
+
 .dkpi b{
-  color:#ffffff; font-size:42px; line-height:1; margin-top:2px;
+  grid-column: 1 / -1; grid-row: 2;
+  color: #fff; font-size: 42px; line-height: 1; margin-top: 2px;
 }
 
-/* โทนสีเผื่อใช้ PNG/ไอคอนขาวดำ (ไม่บังคับ) */
-.kpi-water .kpi-ic{ /* ไอคอนหยดน้ำ */
-  /* ถ้าเป็น SVG สีอยู่ในไฟล์แล้วก็โอเค; ถ้าเป็น PNG ขาวดำอยากย้อมสี: */
-  /* filter: hue-rotate(170deg) saturate(180%); */
-}
-.kpi-ph .kpi-ic{ /* บีกเกอร์ */ }
-.kpi-temp .kpi-ic{ /* เทอร์โมมิเตอร์ */ }
-
-/* มือถือ */
+/* มือถือ: ไอคอนเล็กลงเล็กน้อย */
 @media (max-width:640px){
-  .dash-kpis{ gap:18px; }
-  .kpi-ic{ width:18px; height:18px; }
-  .dkpi b{ font-size:32px; }
-}
-
-/* มือถือ: ย่อฟอนต์ลงเล็กน้อย */
-@media (max-width:640px){
-  .dkpi{ padding:8px 10px; gap:8px; }
-  .dkpi b{ font-size:18px; }
-  .kpi-ic, .kpi-ic svg{ width:16px; height:16px; }
+  .dkpi{ grid-template-columns: 18px auto; column-gap: 6px; }
+  .dkpi .kpi-ic{ width: 18px; height: 18px; }
+  .dkpi b{ font-size: 32px; }
 }
 
 
