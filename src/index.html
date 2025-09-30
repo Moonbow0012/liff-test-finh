@@ -34,26 +34,39 @@
 
       <!-- KPIs -->
 <div class="dash-kpis">
+  <!-- Water (filled path) -->
   <div class="dkpi kpi-water">
-    <svg class="kpi-ic" viewBox="0 0 24 24" fill="#ffd639" xmlns="http://www.w3.org/2000/svg">
-      <path d="M12,20a6,6,0,0,1-6-6c0-4,6-10.8,6-10.8S18,10,18,14A6,6,0,0,1,12,20Z"/>
+    <svg class="kpi-ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M12 2s6 6.8 6 10a6 6 0 1 1-12 0C6 8.8 12 2 12 2Z"/>
     </svg>
     <small>Water</small>
     <b id="dkpi-water">—</b>
   </div>
 
+  <!-- pH (beaker – stroke paths only) -->
   <div class="dkpi kpi-ph">
-    <!-- ลบ width/height เดิมออก และเติม class="kpi-ic" -->
-    <svg class="kpi-ic" viewBox="0 0 512 512" fill="#ffd639" xmlns="http://www.w3.org/2000/svg">
-      <!-- …paths… -->
+    <svg class="kpi-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+      <!-- โครงบีกเกอร์ -->
+      <path d="M7 3h10M13 3v6l3.6 7.2A2 2 0 0 1 14.8 19H9.2a2 2 0 0 1-1.8-2.8L11 9V3"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <!-- เส้นระดับของเหลว -->
+      <path d="M9 13c1.8 1 3.6 1 6 0" stroke-width="2" stroke-linecap="round"/>
     </svg>
     <small>pH Level</small>
     <b id="dkpi-ph">—</b>
   </div>
 
+  <!-- Temperature (thermometer – ทุกเส้นเป็น path) -->
   <div class="dkpi kpi-temp">
-    <svg class="kpi-ic" viewBox="0 0 24 24" fill="#ffd639" stroke="#ffd639" xmlns="http://www.w3.org/2000/svg">
-      <!-- …paths… -->
+    <svg class="kpi-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+      <!-- ลำตัวเทอร์โมมิเตอร์ -->
+      <path d="M14.75 14.78V5.58a3.67 3.67 0 0 0-7.33 0v9.2A4.53 4.53 0 1 0 15.67 17.5a4.53 4.53 0 0 0-.92-2.72Z"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <!-- แกนกลาง -->
+      <path d="M11.08 5.58v11" stroke-width="2" stroke-linecap="round"/>
+      <!-- ขีดสเกลด้านขวา (เป็น path ทั้งหมด) -->
+      <path d="M14.75 6.5h2.75M14.75 10.17h2.75M14.75 13.83h2.75"
+            stroke-width="2" stroke-linecap="round"/>
     </svg>
     <small>Temperature (°C)</small>
     <b id="dkpi-temp">—</b>
