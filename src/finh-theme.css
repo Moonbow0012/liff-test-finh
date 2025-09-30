@@ -104,16 +104,17 @@ html,body{
   display: block;
   filter: drop-shadow(0 1px 1px rgba(0,0,0,.25));
   opacity: .95;
+  color:#ffd639;
 }
 
 .dkpi small{
   grid-column: 2; grid-row: 1;
-  color: #fff; font-weight: 700; letter-spacing: .2px;
+  color: #fff; font-weight: 400; letter-spacing: .2px;
 }
 
 .dkpi b{
   grid-column: 1 / -1; grid-row: 2;
-  color: #fff; font-size: 42px; line-height: 1; margin-top: 2px;
+  color: #fff; font-size: 26px; line-height: 1; margin-top: 10px;
 }
 
 /* มือถือ: ไอคอนเล็กลงเล็กน้อย */
@@ -138,7 +139,7 @@ html,body{
 /* Alerts (yellow) */
 .dash-card.alerts{ background:#ffd639; color:#000; }
 .dash-alerts{ list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:10px; }
-.dash-alerts li{ display:flex; align-items:center; gap:10px; border-radius:12px; padding:10px 12px; }
+.dash-alerts li{ display:flex; align-items:center; gap:10px; border-radius:12px; padding:10px 12px; font-weight: 600; font-size: 16px;}
 .dash-alerts .ok,.dash-alerts .warn,.dash-alerts .bad{ width:10px; height:10px; border-radius:50% }
 .dash-alerts .ok{ background:#16a34a } .dash-alerts .warn{ background:#f59e0b } .dash-alerts .bad{ background:#ef4444 }
 
@@ -180,7 +181,7 @@ html,body{
   .pct{ padding:4px 8px; min-width:48px; font-size:12px; }
 
   /* KPI pills */
-  .dash-kpis{ gap:8px; margin-top:8px; }
+  .dash-kpis{ gap:34px; margin-top:8px; }
   .dkpi{ padding:8px 10px; }
   .dkpi b{ font-size:16px; }
 
