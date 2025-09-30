@@ -133,7 +133,7 @@ html,body{
 /* Growth analytics (dark card) */
 .dash-card.growth{ color:#e9f6ee; background:#0f2d1d; border-color:#224f38; }
 .dash-card.growth h3{ color:#cfe9d7; }
-.dash-card.growth .dash-spark{ display:block; position:relative; height:220px; border:1px dashed rgba(255,255,255,.28); border-radius:12px; background:linear-gradient(180deg, rgba(0,0,0,.15), rgba(255,255,255,.05)); }
+.dash-card.growth .dash-spark{ display:block; position:relative; height:220px; border-radius:12px; background:linear-gradient(180deg, rgba(0,0,0,.15), rgba(255,255,255,.05)); }
 .dash-spark canvas{ width:100%; height:220px; display:block; }
 
 /* Alerts (yellow) */
