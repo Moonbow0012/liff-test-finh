@@ -118,36 +118,31 @@ html,body{
 }
 
 @media (max-width: 640px){
-  /* กำหนดให้ KPI เป็นกริด 2 คอลัมน์ */
+  /* วาง KPI เป็นคอลัมน์ (แต่ละรายการ 1 บรรทัด) */
   .dash-kpis{
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    column-gap: 16px;
-    row-gap: 12px;
-    align-items: start;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
     margin-top: 10px;
   }
 
-  /* โครง KPI: แถวบน [icon][label] แถวล่างเป็นค่าตัวเลข */
+  /* ให้ภายในแต่ละ KPI เป็น 3 คอลัมน์: [icon][label][value] */
   .dkpi{
-    grid-template-columns: 18px auto;   /* icon | label */
+    display: grid;
+    grid-template-columns: 18px auto max-content;
+    align-items: center;
     column-gap: 8px;
-    padding: 0;                          /* ตัด padding/pill เดิมในมือถือ */
+    padding: 0;
   }
+
   .dkpi .kpi-ic{ width:18px; height:18px; }
-  .dkpi small{ font-size:13px; opacity:.95; }
-  .dkpi b{ font-size:22px; line-height:1.05; margin-top:4px; }
-
-  /* ให้ Temperature กินเต็มแถว (อ่านง่าย) */
-  .dash-kpis .kpi-temp{ grid-column: 1 / -1; }
+  .dkpi small{ grid-column:2; grid-row:1; font-size:14px; }
+  /* value ย้ายขึ้นมาบรรทัดเดียวกับ label */
+  .dkpi b{
+    grid-column:3; grid-row:1;
+    font-size:18px; line-height:1; margin:0;
+  }
 }
-
-/* จอแคบมาก → เหลือ 1 คอลัมน์ */
-@media (max-width: 380px){
-  .dash-kpis{ grid-template-columns: 1fr; }
-}
-
-
 /* Panels */
 .dash-panels{ display:grid; grid-template-columns:2fr 1.2fr 1.8fr; gap:16px; margin-top:14px; }
 .dash-card{ background:#fff; border:1px solid var(--finh-slate-200); border-radius:var(--radius); padding:16px; box-shadow:var(--shadow); }
