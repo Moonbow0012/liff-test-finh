@@ -123,7 +123,6 @@ html,body{
     display: flex;
     flex-direction: column;
     gap: 15px;
-    margin-top: 20px;
   }
 
   /* ให้ภายในแต่ละ KPI เป็น 3 คอลัมน์: [icon][label][value] */
@@ -132,7 +131,7 @@ html,body{
     grid-template-columns: 18px auto max-content;
     align-items: center;
     column-gap: 8px;
-    padding: 0;
+    padding: 2;
   }
 
   .dkpi .kpi-ic{ width:18px; height:18px; }
@@ -202,8 +201,7 @@ html,body{
   .pct{ padding:4px 8px; min-width:48px; font-size:12px; }
 
   /* KPI pills */
-  .dash-kpis{ gap:34px; margin-top:8px; }
-  .dkpi{ padding:8px 10px; }
+  .dash-kpis{ gap:3px; margin-top:20px; margin-bottom:15px; }
   .dkpi b{ font-size:16px; }
 
   /* cards */
