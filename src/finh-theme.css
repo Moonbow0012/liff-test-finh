@@ -117,11 +117,34 @@ html,body{
   color: #fff; font-size: 26px; line-height: 1; margin-top: 10px;
 }
 
-/* มือถือ: ไอคอนเล็กลงเล็กน้อย */
-@media (max-width:640px){
-  .dkpi{ grid-template-columns: 18px auto; column-gap: 6px; }
-  .dkpi .kpi-ic{ width: 18px; height: 18px; }
-  .dkpi b{ font-size: 32px; }
+@media (max-width: 640px){
+  /* กำหนดให้ KPI เป็นกริด 2 คอลัมน์ */
+  .dash-kpis{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 16px;
+    row-gap: 12px;
+    align-items: start;
+    margin-top: 10px;
+  }
+
+  /* โครง KPI: แถวบน [icon][label] แถวล่างเป็นค่าตัวเลข */
+  .dkpi{
+    grid-template-columns: 18px auto;   /* icon | label */
+    column-gap: 8px;
+    padding: 0;                          /* ตัด padding/pill เดิมในมือถือ */
+  }
+  .dkpi .kpi-ic{ width:18px; height:18px; }
+  .dkpi small{ font-size:13px; opacity:.95; }
+  .dkpi b{ font-size:22px; line-height:1.05; margin-top:4px; }
+
+  /* ให้ Temperature กินเต็มแถว (อ่านง่าย) */
+  .dash-kpis .kpi-temp{ grid-column: 1 / -1; }
+}
+
+/* จอแคบมาก → เหลือ 1 คอลัมน์ */
+@media (max-width: 380px){
+  .dash-kpis{ grid-template-columns: 1fr; }
 }
 
 
