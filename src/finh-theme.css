@@ -122,8 +122,8 @@ html,body{
   .dash-kpis{
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    margin-top: 10px;
+    gap: 15px;
+    margin-top: 20px;
   }
 
   /* ให้ภายในแต่ละ KPI เป็น 3 คอลัมน์: [icon][label][value] */
