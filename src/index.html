@@ -165,6 +165,13 @@ const API_BASE = "https://asia-southeast1-finh-iot-ai.cloudfunctions.net";
 const isAbs = (u) => /^https?:\/\//i.test(u);
 const api   = (u) => isAbs(u) ? u : `${API_BASE}${u}`;
 
+function api(u){
+  if (isAbs(u)) return u;
+  // ถ้าเผลอส่ง /tracking/... มาให้ ตัด /tracking ออกก่อนยิงไป Cloud Functions
+  if (u.startsWith('/tracking/')) u = u.replace('/tracking', '');
+  return `${API_BASE}${u}`;
+}
+
 /* ========== DOM helpers ========== */
 const $ = (id) => document.getElementById(id);
 const barFillDash = $('barFillDash');
