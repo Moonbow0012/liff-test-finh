@@ -162,15 +162,12 @@ const FIREBASE_PROGRESS_URL = 'https://getprogress-iyipepekja-as.a.run.app';
 
 /* === ชี้ไป Cloud Functions ตรง (แก้ให้ตรงโปรเจกต์/region ของคุณ) === */
 const API_BASE = "https://asia-southeast1-finh-iot-ai.cloudfunctions.net";
-const isAbs = (u) => /^https?:\/\//i.test(u);
-const api   = (u) => isAbs(u) ? u : `${API_BASE}${u}`;
-
-function api(u){
-  if (isAbs(u)) return u;
-  // ถ้าเผลอส่ง /tracking/... มาให้ ตัด /tracking ออกก่อนยิงไป Cloud Functions
-  if (u.startsWith('/tracking/')) u = u.replace('/tracking', '');
+const isAbsUrl = (u) => /^https?:\/\//i.test(u);
+const toApiUrl = (u) => {
+  if (isAbsUrl(u)) return u;
+  if (u.startsWith('/tracking/')) u = u.slice('/tracking'.length); // ตัด /tracking ออก
   return `${API_BASE}${u}`;
-}
+};
 
 /* ========== DOM helpers ========== */
 const $ = (id) => document.getElementById(id);
@@ -214,13 +211,13 @@ function buildAuthHeaders(){
 
 /* ========== fetch helpers (เหลือชุดเดียว และ prefix API_BASE อัตโนมัติ) ========== */
 async function authedGet(url){
-  const r = await fetch(api(url), { headers: buildAuthHeaders() });
+  const r = await fetch(toApiUrl(url), { headers: buildAuthHeaders() });
   const t = await r.text(); let j; try{ j = JSON.parse(t); }catch{ throw new Error(`HTTP ${r.status}: ${t}`); }
   if (!r.ok || j.error) throw new Error(j.error || t);
   return j;
 }
 async function authedPost(url, body){
-  const r = await fetch(api(url), { method:'POST', headers: buildAuthHeaders(), body: JSON.stringify(body||{}) });
+  const r = await fetch(toApiUrl(url), { method:'POST', headers: buildAuthHeaders(), body: JSON.stringify(body||{}) });
   const t = await r.text(); let j; try{ j = JSON.parse(t); }catch{ throw new Error(`HTTP ${r.status}: ${t}`); }
   if (!r.ok || j.errors || j.error) throw new Error(j.errors ? JSON.stringify(j.errors) : (j.error || t));
   return j;
