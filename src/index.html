@@ -158,7 +158,26 @@
 <script>
 /* ========== Config ========== */
 const LIFF_ID = '2008085765-YDwJrxy9';
-const FIREBASE_PROGRESS_URL = 'https://getprogress-iyipepekja-as.a.run.app';      
+const FIREBASE_PROGRESS_URL = 'https://getprogress-iyipepekja-as.a.run.app';    
+
+const API_BASE = "https://asia-southeast1-finh-iot-ai.cloudfunctions.net"; // หรือ region ตามที่ deploy
+
+function isAbsolute(url){ return /^https?:\/\//i.test(url); }
+function api(url){ return isAbsolute(url) ? url : `${API_BASE}${url}`; }
+
+// เดิม authedGet/authedPost เรียก path ตรง ๆ → ให้ครอบด้วย api()
+async function authedGet(url){
+  const r = await fetch(api(url), { headers: buildAuthHeaders() });
+  const t = await r.text(); let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
+  if (!r.ok || j.error) throw new Error(j.error || t);
+  return j;
+}
+async function authedPost(url, body){
+  const r = await fetch(api(url), { method:'POST', headers: buildAuthHeaders(), body: JSON.stringify(body||{}) });
+  const t = await r.text(); let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
+  if (!r.ok || j.errors || j.error) throw new Error(j.errors ? JSON.stringify(j.errors) : (j.error || t));
+  return j;
+}
 
 /* ========== DOM helpers ========== */
 const $ = (id) => document.getElementById(id);
@@ -471,6 +490,7 @@ document.addEventListener('click', (e)=>{
 async function refreshHarvestCard(){ try{ const data = await fetchHarvests(); renderHarvestTable(data); } catch(e){ console.error(e); } }
 });
 </script>
-<script async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA2Gx7cUFVTHVR65w371mqgkUCWNlO1SgY&libraries=places"></script>
+<script async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA2Gx7cUFVTHVR65w371mqgkUCWNlO1SgY&libraries=places&loading=async"
+  async defer></script>
 </body>
 </html>
