@@ -158,24 +158,12 @@
 <script>
 /* ========== Config ========== */
 const LIFF_ID = '2008085765-YDwJrxy9';
-const FIREBASE_PROGRESS_URL = 'https://getprogress-iyipepekja-as.a.run.app';    
+const FIREBASE_PROGRESS_URL = 'https://getprogress-iyipepekja-as.a.run.app';
 
-const API_BASE = "https://asia-southeast1-finh-iot-ai.cloudfunctions.net"; // หรือ region ตามที่ deploy
-
-function isAbsolute(url){ return /^https?:\/\//i.test(url); }
-function api(url){ return isAbsolute(url) ? url : `${API_BASE}${url}`; }
-async function authedGet(url){
-  const r = await fetch(api(url), { headers: buildAuthHeaders() });
-  const t = await r.text(); let j; try{ j = JSON.parse(t); }catch{ throw new Error(`HTTP ${r.status}: ${t}`); }
-  if (!r.ok || j.error) throw new Error(j.error || t);
-  return j;
-}
-async function authedPost(url, body){
-  const r = await fetch(api(url), { method:'POST', headers: buildAuthHeaders(), body: JSON.stringify(body||{}) });
-  const t = await r.text(); let j; try{ j = JSON.parse(t); }catch{ throw new Error(`HTTP ${r.status}: ${t}`); }
-  if (!r.ok || j.errors || j.error) throw new Error(j.errors ? JSON.stringify(j.errors) : (j.error || t));
-  return j;
-}
+/* === ชี้ไป Cloud Functions ตรง (แก้ให้ตรงโปรเจกต์/region ของคุณ) === */
+const API_BASE = "https://asia-southeast1-finh-iot-ai.cloudfunctions.net";
+const isAbs = (u) => /^https?:\/\//i.test(u);
+const api   = (u) => isAbs(u) ? u : `${API_BASE}${u}`;
 
 /* ========== DOM helpers ========== */
 const $ = (id) => document.getElementById(id);
@@ -190,14 +178,6 @@ function normalizeLevel(lvl){
   if (typeof lvl === 'string' && /^\d+$/.test(lvl)) { const n = parseInt(lvl,10); return ['1','2','3','4'][Math.max(0, Math.min(3, n))] || lvl; }
   if (String(lvl).toLowerCase().includes('ready')) return '4';
   return String(lvl || '-');
-}
-function pickUpdated(d){
-  if (d?.updatedAtIso) return d.updatedAtIso;
-  const u = d?.updatedAt;
-  if (!u) return '—';
-  if (typeof u === 'string') return u;
-  if (u && typeof u === 'object' && '_seconds' in u) return new Date(u._seconds*1000).toISOString();
-  return String(u);
 }
 function getNum(obj, keys){
   const all = Object.keys(obj || {}), canon = s => String(s||'').toLowerCase();
@@ -224,16 +204,18 @@ function buildAuthHeaders(){
   else throw new Error('No LINE token available');
   return h;
 }
+
+/* ========== fetch helpers (เหลือชุดเดียว และ prefix API_BASE อัตโนมัติ) ========== */
 async function authedGet(url){
-  const r = await fetch(url, { headers: buildAuthHeaders() });
+  const r = await fetch(api(url), { headers: buildAuthHeaders() });
   const t = await r.text(); let j; try{ j = JSON.parse(t); }catch{ throw new Error(`HTTP ${r.status}: ${t}`); }
   if (!r.ok || j.error) throw new Error(j.error || t);
   return j;
 }
 async function authedPost(url, body){
-  const r = await fetch(url, { method:'POST', headers: buildAuthHeaders(), body: JSON.stringify(body||{}) });
+  const r = await fetch(api(url), { method:'POST', headers: buildAuthHeaders(), body: JSON.stringify(body||{}) });
   const t = await r.text(); let j; try{ j = JSON.parse(t); }catch{ throw new Error(`HTTP ${r.status}: ${t}`); }
-  if (!r.ok || j.errors) throw new Error(j.errors ? JSON.stringify(j.errors) : t);
+  if (!r.ok || j.errors || j.error) throw new Error(j.errors ? JSON.stringify(j.errors) : (j.error || t));
   return j;
 }
 
@@ -245,7 +227,7 @@ function formatWater(w){
   const n = +w; if (n <= 1) return `${Math.round(n*100)}%`; if (n <= 100) return `${Math.round(n)}%`; return String(n);
 }
 
-/* ========== APIs ========== */
+/* ========== Progress & Shadow ========== */
 async function getProgress(deviceId){
   const url = `${FIREBASE_PROGRESS_URL}?deviceId=${encodeURIComponent(deviceId)}`;
   const r = await fetch(url, { cache:'no-store' }); const j = await r.json();
@@ -283,21 +265,31 @@ async function renderDkpiForDevice(deviceId){
   localStorage.setItem('deviceId', deviceId);
 }
 
-/* ========== Onboarding (Farm once-only) ========== */
-let currentFarm = null, gmap, gmarker, places;
-const { AdvancedMarkerElement } = google.maps.marker;
-new AdvancedMarkerElement({ map: gmap, position: {lat, lng}, gmpDraggable: true });
+/* ========== Google Maps: รอให้พร้อมก่อนค่อย init ========== */
+// callback จากสคริปต์ Maps → ยิง event 'gmaps-ready'
+window.__gmapsReady = () => window.dispatchEvent(new Event('gmaps-ready'));
+function waitForMapsReady(){
+  return new Promise((resolve, reject)=>{
+    if (window.google?.maps) return resolve(true);
+    const onReady = ()=>{ window.removeEventListener('gmaps-ready', onReady); resolve(true); };
+    window.addEventListener('gmaps-ready', onReady);
+    setTimeout(()=> reject(new Error('Google Maps failed to load')), 15000);
+  });
+}
 
+let currentFarm = null, gmap, gmarker, places;
 function initMapOnce(){
   if (gmap) return;
   const el = document.getElementById('map');
-  gmap = new google.maps.Map(el, { center:{lat:13.736,lng:100.523}, zoom:6, disableDefaultUI:false });
+  gmap = new google.maps.Map(el, { center:{lat:13.736,lng:100.523}, zoom:6 });
   gmarker = new google.maps.Marker({ map:gmap, draggable:true });
 
   const latEl = document.getElementById('lat'), lngEl = document.getElementById('lng');
   const setLL = (lat,lng) => { gmarker.setPosition({lat,lng}); gmap.panTo({lat,lng}); latEl.value=lat.toFixed(6); lngEl.value=lng.toFixed(6); };
 
   gmap.addListener('click', (e)=> setLL(e.latLng.lat(), e.latLng.lng()));
+
+  // Autocomplete (ยังใช้ได้อยู่; เป็น warning เฉย ๆ)
   places = new google.maps.places.Autocomplete(document.getElementById('placeSearch'));
   places.addListener('place_changed', ()=>{
     const p = places.getPlace(); const ll = p.geometry?.location; if (ll) setLL(ll.lat(), ll.lng());
@@ -306,18 +298,17 @@ function initMapOnce(){
   if (navigator.geolocation) navigator.geolocation.getCurrentPosition(pos=> setLL(pos.coords.latitude, pos.coords.longitude));
 }
 
+/* ========== Farm onboarding (ครั้งเดียว) ========== */
 async function getMyFarm(){
   try { const r = await authedGet('/tracking/myFarm'); return r?.farm || null; }
   catch { return null; }
 }
-
 async function ensureFarmOnce(){
-  // 1) เช็ค backend; fallback localStorage เผื่อ backend ยังไม่พร้อม
   const fromServer = await getMyFarm();
   const fromLocal  = localStorage.getItem('finh_onboarded') === '1';
   if (fromServer || fromLocal){ currentFarm = fromServer; return true; }
 
-  // 2) โชว์ modal ให้กรอกครั้งเดียว
+  await waitForMapsReady();
   initMapOnce();
   const modal = document.getElementById('farmModal');
   modal.hidden = false;
@@ -383,20 +374,55 @@ function drawSpark(deviceId){
   const tPad=(tMax-tMin)*.15+.5; tMin=Math.max(0,tMin-tPad); tMax=tMax+tPad;
   const xAt=i=>pad.l+(i/Math.max(1,n-1))*iw, yAt=(v,min,max)=>pad.t+(1-((clamp(v,min,max)-min)/(max-min)))*ih;
 
-  ctx.strokeStyle='rgba(255,255,255,.18)'; ctx.lineWidth=1;
-  for(let g=0; g<=4; g++){ const y=pad.t+g*(ih/4); ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+iw,y); ctx.stroke(); }
-
-  const line=(arr,min,max,color)=>{ ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath(); let moved=false;
-    for(let i=0;i<n;i++){ const v=arr[i]; if(typeof v!=='number') continue; const x=xAt(i), y=yAt(v,min,max); if(!moved){ctx.moveTo(x,y); moved=true;} else ctx.lineTo(x,y); }
-    if(moved) ctx.stroke();
+  // grid
+  const grid='#e5efe933'; const lbl='#ffffffbf'; const phColor='#34d399', tColor='#60a5fa';
+  const ctxLine=(arr,min,max,color)=>{ const ctx2=ctx; ctx2.strokeStyle=color; ctx2.lineWidth=2; ctx2.beginPath(); let moved=false;
+    for(let i=0;i<n;i++){ const v=arr[i]; if(typeof v!=='number') continue; const x=xAt(i), y=yAt(v,min,max); if(!moved){ctx2.moveTo(x,y); moved=true;} else ctx2.lineTo(x,y); }
+    if(moved) ctx2.stroke();
   };
-  line(s.ph, phMin, phMax, '#34d399');   // pH
-  line(s.temp, tMin, tMax, '#60a5fa');   // Temp
-
-  ctx.fillStyle='rgba(255,255,255,.75)'; ctx.font='12px system-ui,-apple-system,Segoe UI,Roboto';
+  ctx.strokeStyle=grid; ctx.lineWidth=1;
+  for(let g=0; g<=4; g++){ const y=pad.t+g*(ih/4); ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+iw,y); ctx.stroke(); }
+  ctxLine(s.ph, phMin, phMax, phColor);
+  ctxLine(s.temp, tMin, tMax, tColor);
+  ctx.fillStyle=lbl; ctx.font='12px system-ui,-apple-system,Segoe UI,Roboto';
   ctx.textAlign='left';  ctx.fillText(`pH ${phMin.toFixed(1)}–${phMax.toFixed(1)}`, pad.l, pad.t-4);
   ctx.textAlign='right'; ctx.fillText(`Temp ${Math.round(tMin)}–${Math.round(tMax)}°C`, pad.l+iw, pad.t-4);
 }
+
+/* ========== Harvest Tracking ========== */
+async function fetchHarvests(limit=50){
+  if (!currentFarm?.id) currentFarm = await getMyFarm();
+  const url = `/tracking/harvests?farmId=${encodeURIComponent(currentFarm?.id||'')}&limit=${limit}&includeLineage=1`;
+  return authedGet(url);
+}
+function fmtDate(ts){
+  if (!ts) return '—';
+  if (typeof ts === 'string') return ts.split('T')[0];
+  if (ts._seconds) return new Date(ts._seconds*1000).toISOString().split('T')[0];
+  return String(ts);
+}
+function fromSafe(v){ return v==null ? '—' : String(v); }
+function esc(s){ return String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
+function renderHarvestTable(data){
+  const tbody = document.querySelector('#harvestTable tbody'); if (!tbody) return;
+  tbody.innerHTML = '';
+  (data?.items||[]).forEach(item=>{
+    const tr = document.createElement('tr');
+    const from = item.from
+      ? `${fromSafe(item.from.pond)} / ${fromSafe(item.from.tray)} / ${Array.isArray(item.from.crops)?item.from.crops.join(', '):fromSafe(item.from.crop)}`
+      : '—';
+    tr.innerHTML = `
+      <td>${fmtDate(item.date)}</td>
+      <td>${esc(item.id||item.code||'')}</td>
+      <td>${item.weightKg!=null ? Number(item.weightKg).toFixed(2) : '—'}</td>
+      <td>${item.moisture!=null ? Number(item.moisture).toFixed(1) : '—'}</td>
+      <td>${esc(item.qcResult||'-')}</td>
+      <td>${esc(from)}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+document.addEventListener('click', (e)=>{ if (e.target && e.target.id === 'reloadHarvest'){ fetchHarvests().then(renderHarvestTable).catch(console.error); } });
+async function refreshHarvestCard(){ try{ const data = await fetchHarvests(); renderHarvestTable(data); } catch(e){ console.error(e); } }
 
 /* ========== Boot ========== */
 window.addEventListener('DOMContentLoaded', async () => {
@@ -444,53 +470,14 @@ window.addEventListener('DOMContentLoaded', async () => {
     window.addEventListener('resize', ()=>{ if (sel?.value) drawSpark(sel.value); });
     await refreshHarvestCard();
   }catch(e){ showError(e); }
-
-  /* ========== Harvest Tracking ========== */
-// NOTE: backend ควรมี /tracking/harvests?farmId=... (ดูโค้ดฝั่ง Functions ด้านล่าง)
-async function fetchHarvests(limit=50){
-  if (!currentFarm?.id) currentFarm = await getMyFarm();
-  const url = `/tracking/harvests?farmId=${encodeURIComponent(currentFarm?.id||'')}&limit=${limit}&includeLineage=1`;
-  return authedGet(url); // { items: [ {id,date,weightKg,moisture,qcResult, from:{pond, tray, crops:[...]}} ] }
-}
-function fmtDate(ts){
-  if (!ts) return '—';
-  if (typeof ts === 'string') return ts.split('T')[0];
-  if (ts._seconds) return new Date(ts._seconds*1000).toISOString().split('T')[0];
-  return String(ts);
-}
-function renderHarvestTable(data){
-  const tbody = document.querySelector('#harvestTable tbody'); if (!tbody) return;
-  tbody.innerHTML = '';
-  (data?.items||[]).forEach(item=>{
-    const tr = document.createElement('tr');
-    const from = item.from
-      ? `${fromSafe(from.pond)} / ${fromSafe(from.tray)} / ${Array.isArray(from.crops)?from.crops.join(', '):fromSafe(from.crop)}`
-      : '—';
-    tr.innerHTML = `
-      <td>${fmtDate(item.date)}</td>
-      <td>${esc(item.id||item.code||'')}</td>
-      <td>${item.weightKg!=null ? Number(item.weightKg).toFixed(2) : '—'}</td>
-      <td>${item.moisture!=null ? Number(item.moisture).toFixed(1) : '—'}</td>
-      <td>${esc(item.qcResult||'-')}</td>
-      <td>${esc(from)}</td>`;
-    tbody.appendChild(tr);
-  });
-}
-function fromSafe(v){ return v==null ? '—' : String(v); }
-function esc(s){ return String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
-
-// hook ปุ่ม Reload
-document.addEventListener('click', (e)=>{
-  if (e.target && e.target.id === 'reloadHarvest'){
-    fetchHarvests().then(renderHarvestTable).catch(console.error);
-  }
-});
-
-// เรียกตอน refresh ทั้งหน้า
-async function refreshHarvestCard(){ try{ const data = await fetchHarvests(); renderHarvestTable(data); } catch(e){ console.error(e); } }
 });
 </script>
-<script async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA2Gx7cUFVTHVR65w371mqgkUCWNlO1SgY&libraries=places&loading=async"
+<script>
+  // ใช้เป็น callback เมื่อสคริปต์ Maps โหลดเสร็จ
+  window.__gmapsReady = () => window.dispatchEvent(new Event('gmaps-ready'));
+  </script>
+<script
+async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA2Gx7cUFVTHVR65w371mqgkUCWNlO1SgY&libraries=places&loading=async"
   async defer></script>
 </body>
 </html>
