@@ -164,17 +164,15 @@ const API_BASE = "https://asia-southeast1-finh-iot-ai.cloudfunctions.net"; // �
 
 function isAbsolute(url){ return /^https?:\/\//i.test(url); }
 function api(url){ return isAbsolute(url) ? url : `${API_BASE}${url}`; }
-
-// เดิม authedGet/authedPost เรียก path ตรง ๆ → ให้ครอบด้วย api()
 async function authedGet(url){
   const r = await fetch(api(url), { headers: buildAuthHeaders() });
-  const t = await r.text(); let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
+  const t = await r.text(); let j; try{ j = JSON.parse(t); }catch{ throw new Error(`HTTP ${r.status}: ${t}`); }
   if (!r.ok || j.error) throw new Error(j.error || t);
   return j;
 }
 async function authedPost(url, body){
   const r = await fetch(api(url), { method:'POST', headers: buildAuthHeaders(), body: JSON.stringify(body||{}) });
-  const t = await r.text(); let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
+  const t = await r.text(); let j; try{ j = JSON.parse(t); }catch{ throw new Error(`HTTP ${r.status}: ${t}`); }
   if (!r.ok || j.errors || j.error) throw new Error(j.errors ? JSON.stringify(j.errors) : (j.error || t));
   return j;
 }
@@ -287,6 +285,8 @@ async function renderDkpiForDevice(deviceId){
 
 /* ========== Onboarding (Farm once-only) ========== */
 let currentFarm = null, gmap, gmarker, places;
+const { AdvancedMarkerElement } = google.maps.marker;
+new AdvancedMarkerElement({ map: gmap, position: {lat, lng}, gmpDraggable: true });
 
 function initMapOnce(){
   if (gmap) return;
