@@ -420,12 +420,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     sel && (sel.onchange = async ()=>{ localStorage.setItem('deviceId', sel.value||''); await refreshAll(); });
 
     await refreshAll();
-
     setInterval(()=>{ if (!sel?.value) return; loadProgress(sel.value).catch(showError); loadShadow(sel.value).catch(showError); }, 60000);
     if (sel?.value) drawSpark(sel.value);
     window.addEventListener('resize', ()=>{ if (sel?.value) drawSpark(sel.value); });
-
-    await refreshAll();
     await refreshHarvestCard();
   }catch(e){ showError(e); }
 

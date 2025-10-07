@@ -160,10 +160,6 @@ async function signInFirebaseIfNeeded() {
     console.error("authLine failed", js);
     $("#who").innerHTML = `<span class="err">authLine ล้มเหลว: ${js?.error || r.status}</span>`;
     throw new Error(js?.error || "authLine failed");
-    if (!r.ok || !js.ok) {
-      const msg = js?.message || js?.error || ("HTTP_"+r.status);
-      throw new Error(msg);   // ให้เห็น message จริงบน UI/Console
-}
   }
 
   if (!firebase.apps?.length) firebase.initializeApp(FIREBASE_CONFIG);

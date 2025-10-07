@@ -10,7 +10,6 @@ import { setGlobalOptions, logger } from "firebase-functions/v2";
 // firebase-admin v12 (modular)
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore, Timestamp, FieldValue } from "firebase-admin/firestore";
-
 import type { Request, Response } from "express";
 
 // -----------------------------------------------------------------------------
@@ -496,4 +495,4 @@ export const diagWhoami = onRequest({ cors: true }, async (_req: Request, res: R
 });
 
 export { trkCreate, trkUpdate, trkGet, lineWebhookTracking } from "./tracking.js";
-export { createOrJoinFarm, myFarm, harvests } from "./tracking.js";
+export { createOrJoinFarm, myFarm, harvests } from "./farm.js";

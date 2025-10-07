@@ -1,5 +1,7 @@
 {
-  "engines": { "node": "20" },
+  "engines": {
+    "node": "20"
+  },
   "main": "lib/index.js",
   "type": "module",
   "scripts": {
@@ -12,7 +14,7 @@
     "firebase-functions": "^5.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.4.0",
-    "rimraf": "^5.0.0"
+    "rimraf": "^5.0.10",
+    "typescript": "^5.4.0"
   }
 }
