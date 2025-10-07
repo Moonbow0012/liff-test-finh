@@ -73,7 +73,7 @@
   </div>
 </div>
       </div>
-    </div>              <!-- ✅ ปิด div ชั้นใน -->
+    </div>            
   </div>       
 
     <!-- Panels -->
@@ -103,21 +103,62 @@
         </ul>
       </div>
 
-      <div class="dash-card activity">
-        <h3>Activity Overview</h3>
-        <div class="dash-activity" id="dash-activity">
-          <div class="dash-evt"><div><b>Watering System Adjustment</b><div><small>10:00–11:00</small></div></div><button class="dash-btn">Details</button></div>
-          <div class="dash-evt"><div><b>Fertilizer Check</b><div><small>12:00–12:30</small></div></div><small>Completed</small></div>
-          <div class="dash-evt"><div><b>Lighting Adjustment</b><div><small>16:00–18:00</small></div></div><small>In Progress</small></div>
-        </div>
-      </div>
-    </div>
+<div class="dash-card harvests">
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <h3>Harvest Tracking</h3>
+    <button id="reloadHarvest" class="dash-btn">Reload</button>
+  </div>
+
+  <div class="table-wrap">
+    <table class="tbl" id="harvestTable">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Harvest</th>
+          <th>Weight (kg)</th>
+          <th>Moisture (%)</th>
+          <th>QC</th>
+          <th>From (Pond / Tray / Crop)</th>
+        </tr>
+      </thead>
+      <tbody><!-- filled by JS --></tbody>
+    </table>
+  </div>
+</div>
   </section>
+
+  <!-- Onboarding: Farm setup -->
+<div id="farmModal" class="modal" hidden>
+  <div class="modal-card">
+    <h3>ตั้งค่าฟาร์มครั้งแรก</h3>
+
+    <label class="f-row">
+      <span>ชื่อฟาร์ม</span>
+      <input id="farmName" placeholder="เช่น Greenish Farm">
+    </label>
+
+    <label class="f-row">
+      <span>ค้นหาที่อยู่</span>
+      <input id="placeSearch" placeholder="พิมพ์ชื่อสถานที่/ที่อยู่">
+    </label>
+
+    <div id="map" class="mapbox"></div>
+
+    <div class="f-ll">
+      <input id="lat" placeholder="lat" readonly>
+      <input id="lng" placeholder="lng" readonly>
+    </div>
+
+    <div class="actions">
+      <button id="saveFarm" class="dash-btn">บันทึก</button>
+    </div>
+  </div>
+</div>
 
 <script>
 /* ========== Config ========== */
 const LIFF_ID = '2008085765-YDwJrxy9';
-const FIREBASE_PROGRESS_URL = 'https://getprogress-iyipepekja-as.a.run.app';
+const FIREBASE_PROGRESS_URL = 'https://getprogress-iyipepekja-as.a.run.app';      
 
 /* ========== DOM helpers ========== */
 const $ = (id) => document.getElementById(id);
@@ -225,6 +266,62 @@ async function renderDkpiForDevice(deviceId){
   localStorage.setItem('deviceId', deviceId);
 }
 
+/* ========== Onboarding (Farm once-only) ========== */
+let currentFarm = null, gmap, gmarker, places;
+
+function initMapOnce(){
+  if (gmap) return;
+  const el = document.getElementById('map');
+  gmap = new google.maps.Map(el, { center:{lat:13.736,lng:100.523}, zoom:6, disableDefaultUI:false });
+  gmarker = new google.maps.Marker({ map:gmap, draggable:true });
+
+  const latEl = document.getElementById('lat'), lngEl = document.getElementById('lng');
+  const setLL = (lat,lng) => { gmarker.setPosition({lat,lng}); gmap.panTo({lat,lng}); latEl.value=lat.toFixed(6); lngEl.value=lng.toFixed(6); };
+
+  gmap.addListener('click', (e)=> setLL(e.latLng.lat(), e.latLng.lng()));
+  places = new google.maps.places.Autocomplete(document.getElementById('placeSearch'));
+  places.addListener('place_changed', ()=>{
+    const p = places.getPlace(); const ll = p.geometry?.location; if (ll) setLL(ll.lat(), ll.lng());
+  });
+
+  if (navigator.geolocation) navigator.geolocation.getCurrentPosition(pos=> setLL(pos.coords.latitude, pos.coords.longitude));
+}
+
+async function getMyFarm(){
+  try { const r = await authedGet('/tracking/myFarm'); return r?.farm || null; }
+  catch { return null; }
+}
+
+async function ensureFarmOnce(){
+  // 1) เช็ค backend; fallback localStorage เผื่อ backend ยังไม่พร้อม
+  const fromServer = await getMyFarm();
+  const fromLocal  = localStorage.getItem('finh_onboarded') === '1';
+  if (fromServer || fromLocal){ currentFarm = fromServer; return true; }
+
+  // 2) โชว์ modal ให้กรอกครั้งเดียว
+  initMapOnce();
+  const modal = document.getElementById('farmModal');
+  modal.hidden = false;
+
+  return await new Promise((resolve)=>{
+    document.getElementById('saveFarm').onclick = async ()=>{
+      const name = document.getElementById('farmName').value?.trim();
+      const lat  = +document.getElementById('lat').value;
+      const lng  = +document.getElementById('lng').value;
+      const address = document.getElementById('placeSearch').value?.trim() || null;
+      if (!name || isNaN(lat) || isNaN(lng)){ alert('กรอกชื่อฟาร์มและปักหมุดให้ครบ'); return; }
+
+      try{
+        await authedPost('/tracking/createOrJoinFarm', { name, lat, lng, address });
+        localStorage.setItem('finh_onboarded','1');
+        currentFarm = await getMyFarm();
+        modal.hidden = true;
+        resolve(true);
+      }catch(e){ alert(e.message||e); }
+    };
+  });
+}
+
 /* ========== Sparkline (pH & Temp) ========== */
 const SERIES_MAX = 120;
 function seriesKey(deviceId){ return 'series_' + deviceId; }
@@ -287,6 +384,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   try{
     await liff.init({ liffId: LIFF_ID });
     await ensureLogin();
+    await ensureFarmOnce();
 
     const qs = new URLSearchParams(location.search);
     if (qs.get('code') || qs.get('liffRedirectUri')) history.replaceState({}, '', stripRedirectUri());
@@ -327,8 +425,55 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (sel?.value) drawSpark(sel.value);
     window.addEventListener('resize', ()=>{ if (sel?.value) drawSpark(sel.value); });
 
+    await refreshAll();
+    await refreshHarvestCard();
   }catch(e){ showError(e); }
+
+  /* ========== Harvest Tracking ========== */
+// NOTE: backend ควรมี /tracking/harvests?farmId=... (ดูโค้ดฝั่ง Functions ด้านล่าง)
+async function fetchHarvests(limit=50){
+  if (!currentFarm?.id) currentFarm = await getMyFarm();
+  const url = `/tracking/harvests?farmId=${encodeURIComponent(currentFarm?.id||'')}&limit=${limit}&includeLineage=1`;
+  return authedGet(url); // { items: [ {id,date,weightKg,moisture,qcResult, from:{pond, tray, crops:[...]}} ] }
+}
+function fmtDate(ts){
+  if (!ts) return '—';
+  if (typeof ts === 'string') return ts.split('T')[0];
+  if (ts._seconds) return new Date(ts._seconds*1000).toISOString().split('T')[0];
+  return String(ts);
+}
+function renderHarvestTable(data){
+  const tbody = document.querySelector('#harvestTable tbody'); if (!tbody) return;
+  tbody.innerHTML = '';
+  (data?.items||[]).forEach(item=>{
+    const tr = document.createElement('tr');
+    const from = item.from
+      ? `${fromSafe(from.pond)} / ${fromSafe(from.tray)} / ${Array.isArray(from.crops)?from.crops.join(', '):fromSafe(from.crop)}`
+      : '—';
+    tr.innerHTML = `
+      <td>${fmtDate(item.date)}</td>
+      <td>${esc(item.id||item.code||'')}</td>
+      <td>${item.weightKg!=null ? Number(item.weightKg).toFixed(2) : '—'}</td>
+      <td>${item.moisture!=null ? Number(item.moisture).toFixed(1) : '—'}</td>
+      <td>${esc(item.qcResult||'-')}</td>
+      <td>${esc(from)}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+function fromSafe(v){ return v==null ? '—' : String(v); }
+function esc(s){ return String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
+
+// hook ปุ่ม Reload
+document.addEventListener('click', (e)=>{
+  if (e.target && e.target.id === 'reloadHarvest'){
+    fetchHarvests().then(renderHarvestTable).catch(console.error);
+  }
+});
+
+// เรียกตอน refresh ทั้งหน้า
+async function refreshHarvestCard(){ try{ const data = await fetchHarvests(); renderHarvestTable(data); } catch(e){ console.error(e); } }
 });
 </script>
+<script async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA2Gx7cUFVTHVR65w371mqgkUCWNlO1SgY&libraries=places"></script>
 </body>
 </html>

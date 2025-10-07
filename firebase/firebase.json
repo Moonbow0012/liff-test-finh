@@ -11,6 +11,24 @@
       "codebase": "issues"
     }
   ],
+  "hosting": {
+    "public": "public",                      
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      {
+        "source": "/tracking/createOrJoinFarm",
+        "function": { "functionId": "createOrJoinFarm", "region": "asia-southeast1" }
+      },
+      {
+        "source": "/tracking/myFarm",
+        "function": { "functionId": "myFarm", "region": "asia-southeast1" }
+      },
+      {
+        "source": "/tracking/harvests",
+        "function": { "functionId": "harvests", "region": "asia-southeast1" }
+      }
+    ]
+  },
   "firestore": { "rules": "firestore.rules" },
   "storage":   { "rules": "storage.rules" }
 }

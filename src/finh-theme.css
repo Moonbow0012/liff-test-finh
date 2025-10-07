@@ -221,3 +221,24 @@ html,body{
   .pct{ margin-left:0; margin-top:6px; }
 }
 
+.modal{ position:fixed; inset:0; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; z-index:60; }
+.modal[hidden]{ display:none; }
+.modal-card{
+  width:min(720px,92vw); background:#0d201a; color:#fff; border:1px solid rgba(255,255,255,.18);
+  border-radius:16px; padding:16px 16px 14px; box-shadow:0 8px 36px rgba(0,0,0,.35);
+}
+.modal-card h3{ font-size:18px; margin:0 0 12px; }
+.f-row{ display:flex; gap:10px; align-items:center; margin:6px 0; }
+.f-row span{ width:120px; opacity:.9; }
+.f-row input{ flex:1; padding:8px 10px; border-radius:10px; border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.06); color:#fff; }
+.mapbox{ height:260px; border-radius:12px; border:1px solid rgba(255,255,255,.2); margin-top:8px; overflow:hidden; }
+.f-ll{ display:flex; gap:8px; margin-top:8px; }
+.f-ll input{ flex:1; padding:6px 8px; border-radius:10px; border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.06); color:#fff; }
+.actions{ display:flex; justify-content:flex-end; margin-top:12px; }
+
+/* === Harvest table === */
+.table-wrap{ overflow:auto; margin-top:8px; }
+.tbl{ width:100%; border-collapse:separate; border-spacing:0; }
+.tbl th, .tbl td{ padding:10px 12px; border-bottom:1px solid rgba(255,255,255,.13); text-align:left; }
+.tbl th{ font-weight:700; opacity:.9; }
+.tbl tbody tr:hover{ background:rgba(255,255,255,.04); }
