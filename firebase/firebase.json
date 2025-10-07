@@ -1,34 +1,8 @@
 {
   "functions": [
-    {
-      "source": "functions",
-      "codebase": "default",
-      "runtime": "nodejs20",
-      "predeploy": ["npm --prefix \"%RESOURCE_DIR%\" run build"]
-    },
-    {
-      "source": "functions-issues",
-      "codebase": "issues"
-    }
+    { "source": "functions", "codebase": "default", "runtime": "nodejs20" },
+    { "source": "functions-issues", "codebase": "issues" }
   ],
-  "hosting": {
-    "public": "public",         
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "rewrites": [
-      {
-        "source": "/tracking/createOrJoinFarm",
-        "function": { "functionId": "createOrJoinFarm", "region": "asia-southeast1" }
-      },
-      {
-        "source": "/tracking/myFarm",
-        "function": { "functionId": "myFarm", "region": "asia-southeast1" }
-      },
-      {
-        "source": "/tracking/harvests",
-        "function": { "functionId": "harvests", "region": "asia-southeast1" }
-      }
-    ]
-  },
   "firestore": { "rules": "firestore.rules" },
   "storage":   { "rules": "storage.rules" }
 }

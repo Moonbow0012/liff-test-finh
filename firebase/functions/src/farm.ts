@@ -1,13 +1,45 @@
 // functions/src/tracking.ts
 import { onRequest } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
-if (!admin.apps.length) admin.initializeApp();
+
+const _admin: any = admin || {};
+if (!_admin.apps || !_admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 
-/** TODO: แทนที่ด้วยการ verify LINE ID Token จริงจาก headers
- *  - อ่านจาก: x-line-id-token หรือ x-line-access-token (เหมือน authedGet/authedPost ฝั่งเว็บ)
- *  - คืน user id (uid) ที่ผูกกับระบบคุณ
- */
+/* ===== CORS helper (อนุญาต Vercel + localhost) ===== */
+const ALLOWED_ORIGINS = new Set([
+  "https://liff-test-finh.vercel.app",
+  "http://localhost:3000",
+  "http://localhost:5173",
+]);
+
+function setCors(req: any, res: any) {
+  const origin = req.headers.origin;
+  const allow = origin && ALLOWED_ORIGINS.has(origin) ? origin : "*";
+  res.set("Access-Control-Allow-Origin", allow);
+  res.set("Vary", "Origin");
+  res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  // เพิ่ม header ที่เราส่งจากหน้าเว็บ (สำคัญมาก)
+  res.set(
+    "Access-Control-Allow-Headers",
+    "Content-Type, x-line-id-token, x-line-access-token, authorization"
+  );
+  res.set("Access-Control-Max-Age", "86400");
+}
+
+function withCors(
+  handler: (req: any, res: any) => void | Promise<void>
+) {
+  return async (req: any, res: any) => {
+    setCors(req, res);
+    if (req.method === "OPTIONS") {
+      res.status(204).send(""); // ตอบ preflight
+      return;
+    }
+    await handler(req, res);
+  };
+}
+
 async function requireUID(req: any): Promise<string> {
   // ตัวอย่าง dev: ให้ผ่านไปก่อน
   const dev = req.headers["x-dev-uid"];
