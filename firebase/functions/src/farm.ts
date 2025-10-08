@@ -1,4 +1,5 @@
-import { onRequest } from "firebase-functions/v2/https";
+import { onRequest, HttpsError } from "firebase-functions/v2/https";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import * as admin from "firebase-admin";
 
 const _admin: any = admin || {};
@@ -55,50 +56,60 @@ async function getMyFarmFor(uid: string) {
 }
 
 /* ---------- สร้าง/เข้าร่วมฟาร์ม ---------- */
-export const createOrJoinFarm = onRequest(
-  { region: "asia-southeast1" },
-  withCors(async (req, res) => {
-    try {
-      const uid = await requireUID(req);
+export const createOrJoinFarm = onRequest(async (req, res) => {
+  try {
+    if (req.method !== "POST") throw new HttpsError("invalid-argument","POST only");
 
-      // เดิม: const { name, lat, lng, address } = (req.body || {}) as { ... }
-      const b = (req.body || {}) as any;
-      const name: string = (b.name ?? "").toString().trim();
-      const lat: number  = typeof b.lat === "number" ? b.lat : Number(b.lat);
-      const lng: number  = typeof b.lng === "number" ? b.lng : Number(b.lng);
-      const address: string | null = b.address ? String(b.address) : null;
-
-      if (!name || Number.isNaN(lat) || Number.isNaN(lng)) {
-        res.status(400).json({ error: "missing/invalid name or lat/lng" });
-        return;
-      }
-
-      if (!name || typeof lat !== "number" || typeof lng !== "number") {
-        res.status(400).json({ error: "missing name/lat/lng" });
-        return;
-      }
-
-      const now = admin.firestore.FieldValue.serverTimestamp();
-      const farmRef = db.collection("farms").doc();
-      await farmRef.set({
-        name,
-        location: { lat, lng, address: address || null },
-        createdBy: uid,
-        createdAt: now,
-        membersCount: 1,
-      });
-      await farmRef.collection("members").doc(uid).set({
-        uid, role: "owner", joinedAt: now,
-      });
-
-      const farmDoc = await farmRef.get();
-      res.json({ ok: true, farmId: farmRef.id, farm: { id: farmRef.id, ...(farmDoc.data() || {}) } });
-    } catch (e: any) {
-      console.error("createOrJoinFarm error:", e);
-      res.status(400).json({ error: e?.message || String(e) });
+    const { name, lat, lng, address } = (typeof req.body === "object" ? req.body : {}) as any;
+    const uid = (req.get("x-dev-uid") || "").trim();
+    if (!uid) throw new HttpsError("unauthenticated","missing x-dev-uid");
+    if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+      throw new HttpsError("invalid-argument", "name/lat/lng required");
     }
-  })
-);
+
+    const db = getFirestore();
+    const farms = db.collection("farms");
+
+    // หาเดิมตาม name (หรือจะใช้ slug/code ก็ได้)
+    let farmRef = farms.doc();
+    const existing = await farms.where("name","==", String(name).trim()).limit(1).get();
+    if (!existing.empty) farmRef = existing.docs[0].ref;
+
+    await db.runTransaction(async tx => {
+      const snap = await tx.get(farmRef);
+
+      // สร้างถ้ายังไม่มี / อัปเดตถ้ามีอยู่แล้ว → เลี่ยง precondition ด้วย merge:true
+      tx.set(farmRef, {
+        name: String(name).trim(),
+        lat: Number(lat),
+        lng: Number(lng),
+        address: address ?? null,
+        updatedAt: FieldValue.serverTimestamp(),
+        ...(snap.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
+      }, { merge: true });
+
+      // ผูกสมาชิก (ก็ใช้ set merge true เช่นกัน)
+      const memberRef = farmRef.collection("members").doc(uid);
+      tx.set(memberRef, {
+        role: "owner",
+        joinedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    });
+
+    res.json({ ok:true, farmId: farmRef.id });
+  } catch (e: any) {
+    const code = e?.code || "internal";
+    const msg  = e?.message || String(e);
+    const status =
+      code === "invalid-argument" ? 400 :
+      code === "unauthenticated"  ? 401 :
+      code === "permission-denied"? 403 :
+      code === "failed-precondition"? 400 : 500;
+
+    // ใส่ข้อความให้ครบ (จะได้ไม่เจอ “FAILED_PRECONDITION:” เปล่าๆ)
+    res.status(status).json({ error: `${code}: ${msg}` });
+  }
+});
 
 /* ---------- myFarm (คืน 200 เสมอ) ---------- */
 export const myFarm = onRequest(
