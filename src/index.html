@@ -334,7 +334,7 @@ document.getElementById('saveFarm').onclick = async ()=>{
   }
 
   try{
-    const res = await authedPost('/tracking/createOrJoinFarmV2', { name, lat, lng, address });
+    const res = await authedPost('/tracking/createOrJoinFarm', { name, lat, lng, address });
     // success: ปิด modal / reload farm
     localStorage.setItem('finh_onboarded', '1');
         currentFarm = await getMyFarm();
