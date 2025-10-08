@@ -56,15 +56,12 @@ async function getMyFarmFor(uid: string) {
 }
 
 /* ---------- สร้าง/เข้าร่วมฟาร์ม ---------- */
-export const createOrJoinFarm = onRequest(
+export const createOrJoinFarmV2 = onRequest(
   { region: "asia-southeast1" },
   withCors(async (req, res) => {
     const t0 = Date.now();
     try {
-      if (req.method !== "POST") {
-        res.status(405).json({ error: "method not allowed" });
-        return;
-      }
+      if (req.method !== "POST") { res.status(405).json({ error: "method not allowed" }); return; }
 
       const uid = await requireUID(req);
       const b = (req.body || {}) as any;
@@ -73,54 +70,29 @@ export const createOrJoinFarm = onRequest(
       const lng  = typeof b.lng === "number" ? b.lng : Number(b.lng);
       const address = b.address ? String(b.address) : null;
 
-      // Validate เข้มงวด + log
       if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-        console.error("[createOrJoinFarm] invalid input", { uid, name, lat, lng, address });
-        res.status(400).json({ error: "invalid name/lat/lng" });
-        return;
+        res.status(400).json({ error: "invalid name/lat/lng" }); return;
       }
 
       const now = admin.firestore.FieldValue.serverTimestamp();
-
-      // (สำคัญ) ทำให้ idempotent และเลี่ยง precondition: ใช้ set(..., {merge:true})
-      const farmRef = db.collection("farms").doc(); // auto-id
+      const farmRef = db.collection("farms").doc();
       await farmRef.set({
-        name,
-        location: { lat, lng, address: address || null },
-        createdBy: uid,
-        createdAt: now,
-        updatedAt: now,
-        membersCount: admin.firestore.FieldValue.increment ? admin.firestore.FieldValue.increment(1) : 1,
+        name, location: { lat, lng, address: address || null },
+        createdBy: uid, createdAt: now, updatedAt: now,
       }, { merge: true });
 
-      // สมาชิกก็ใช้ merge:true เช่นกัน
-      const memberRef = farmRef.collection("members").doc(uid);
-      await memberRef.set({
-        uid,
-        role: "owner",
-        joinedAt: now,
+      await farmRef.collection("members").doc(uid).set({
+        uid, role: "owner", joinedAt: now,
       }, { merge: true });
 
-      const farmDoc = await farmRef.get();
-      const payload = { ok: true, farmId: farmRef.id, farm: { id: farmRef.id, ...(farmDoc.data() || {}) } };
-
-      console.log("[createOrJoinFarm] ok", { uid, farmId: farmRef.id, ms: Date.now() - t0 });
-      res.json(payload);
-    } catch (e: any) {
-      // log ให้ครบทุกฟิลด์ที่สำคัญ เพื่อตามรอยได้ใน Logs Explorer
-      console.error("[createOrJoinFarm] error", {
-        code: e?.code,
-        name: e?.name,
-        message: e?.message,
-        stack: e?.stack,
-      });
-
-      // ส่งข้อความกลับไปให้หน้าเว็บแบบอ่านง่าย
-      const code = (e?.code || "").toString();
-      const msg  = e?.message || String(e);
-      // แปลง gRPC code 9 → HTTP 412 ให้สื่อความหมายกว่าเดิม
-      const http = code === "9" || /FAILED_PRECONDITION/i.test(msg) ? 412 : 400;
-      res.status(http).json({ error: msg || "FAILED_PRECONDITION" });
+      const snap = await farmRef.get();
+      res.set('x-finh-version', 'farm.ts:createOrJoinFarmV2@' + new Date().toISOString());
+      res.json({ ok:true, farmId: farmRef.id, farm: { id: farmRef.id, ...(snap.data()||{}) } });
+    } catch (e:any) {
+      console.error("[createOrJoinFarmV2] error", { code:e?.code, name:e?.name, message:e?.message, stack:e?.stack });
+      const msg = e?.message || String(e);
+      const isPrecond = (e?.code === 9) || /FAILED_PRECONDITION/i.test(msg);
+      res.status(isPrecond ? 412 : 400).json({ error: msg });
     }
   })
 );
