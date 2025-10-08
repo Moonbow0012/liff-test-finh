@@ -60,14 +60,16 @@ export const createOrJoinFarm = onRequest(
   withCors(async (req, res) => {
     try {
       const uid = await requireUID(req);
-      const { name, lat, lng, address } = (req.body || {}) as {
-        name?: string; lat?: number; lng?: number; address?: string | null;
-      };
 
-      // ถ้ามีอยู่แล้ว ส่งกลับ
-      const existing = await getMyFarmFor(uid);
-      if (existing) {
-        res.json({ ok: true, farmId: existing.id, farm: existing });
+      // เดิม: const { name, lat, lng, address } = (req.body || {}) as { ... }
+      const b = (req.body || {}) as any;
+      const name: string = (b.name ?? "").toString().trim();
+      const lat: number  = typeof b.lat === "number" ? b.lat : Number(b.lat);
+      const lng: number  = typeof b.lng === "number" ? b.lng : Number(b.lng);
+      const address: string | null = b.address ? String(b.address) : null;
+
+      if (!name || Number.isNaN(lat) || Number.isNaN(lng)) {
+        res.status(400).json({ error: "missing/invalid name or lat/lng" });
         return;
       }
 

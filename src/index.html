@@ -203,18 +203,14 @@ async function ensureLogin(){
 function buildAuthHeaders(){
   const idToken = sessionStorage.getItem('line_id_token') || liff.getIDToken();
   const access  = sessionStorage.getItem('line_access_token') || liff.getAccessToken();
-  const h = { 'Content-Type': 'application/json' };
-
+  const h = { 'Content-Type':'application/json' };
   if (idToken && idToken.includes('.')) h['x-line-id-token'] = idToken;
   else if (access) h['x-line-access-token'] = access;
-
-  // เพิ่มบรรทัดนี้ (ชั่วคราวช่วง dev):
   try {
     const decoded = liff.getDecodedIDToken?.();
     const uid = decoded?.sub || decoded?.amr?.[0] || 'dev-user';
     h['x-dev-uid'] = uid;
   } catch { h['x-dev-uid'] = 'dev-user'; }
-
   return h;
 }
 
@@ -327,20 +323,30 @@ async function ensureFarmOnce(){
   modal.hidden = false;
 
   return await new Promise((resolve)=>{
-    document.getElementById('saveFarm').onclick = async ()=>{
-      const name = document.getElementById('farmName').value?.trim();
-      const lat  = +document.getElementById('lat').value;
-      const lng  = +document.getElementById('lng').value;
-      const address = document.getElementById('placeSearch').value?.trim() || null;
-      if (!name || isNaN(lat) || isNaN(lng)){ alert('กรอกชื่อฟาร์มและปักหมุดให้ครบ'); return; }
+document.getElementById('saveFarm').onclick = async ()=>{
+  const nameEl = document.getElementById('farmName');
+  const latEl  = document.getElementById('lat');
+  const lngEl  = document.getElementById('lng');
+  const addrEl = document.getElementById('placeSearch');
 
-      try{
-        await authedPost('/tracking/createOrJoinFarm', { name, lat, lng, address });
-        localStorage.setItem('finh_onboarded','1');
+  const name = (nameEl?.value || '').trim();
+  const lat  = Number((latEl?.value || '').trim());
+  const lng  = Number((lngEl?.value || '').trim());
+  const address = (addrEl?.value || '').trim() || null;
+
+  if (!name || Number.isNaN(lat) || Number.isNaN(lng)) {
+    alert('กรอกชื่อฟาร์มและตำแหน่งให้ครบ (lat/lng ต้องเป็นตัวเลข)');
+    return;
+  }
+
+  try{
+    const res = await authedPost('/tracking/createOrJoinFarm', { name, lat, lng, address });
+    // success: ปิด modal / reload farm
+    localStorage.setItem('finh_onboarded', '1');
         currentFarm = await getMyFarm();
         modal.hidden = true;
         resolve(true);
-      }catch(e){ alert(e.message||e); }
+      }catch(e){ console.error('createOrJoinFarm failed:', e); alert(e.message||e); }
     };
   });
 }
