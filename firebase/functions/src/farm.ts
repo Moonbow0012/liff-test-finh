@@ -56,60 +56,74 @@ async function getMyFarmFor(uid: string) {
 }
 
 /* ---------- สร้าง/เข้าร่วมฟาร์ม ---------- */
-export const createOrJoinFarm = onRequest(async (req, res) => {
-  try {
-    if (req.method !== "POST") throw new HttpsError("invalid-argument","POST only");
+export const createOrJoinFarm = onRequest(
+  { region: "asia-southeast1" },
+  withCors(async (req, res) => {
+    const t0 = Date.now();
+    try {
+      if (req.method !== "POST") {
+        res.status(405).json({ error: "method not allowed" });
+        return;
+      }
 
-    const { name, lat, lng, address } = (typeof req.body === "object" ? req.body : {}) as any;
-    const uid = (req.get("x-dev-uid") || "").trim();
-    if (!uid) throw new HttpsError("unauthenticated","missing x-dev-uid");
-    if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-      throw new HttpsError("invalid-argument", "name/lat/lng required");
-    }
+      const uid = await requireUID(req);
+      const b = (req.body || {}) as any;
+      const name = (b.name ?? "").toString().trim();
+      const lat  = typeof b.lat === "number" ? b.lat : Number(b.lat);
+      const lng  = typeof b.lng === "number" ? b.lng : Number(b.lng);
+      const address = b.address ? String(b.address) : null;
 
-    const db = getFirestore();
-    const farms = db.collection("farms");
+      // Validate เข้มงวด + log
+      if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+        console.error("[createOrJoinFarm] invalid input", { uid, name, lat, lng, address });
+        res.status(400).json({ error: "invalid name/lat/lng" });
+        return;
+      }
 
-    // หาเดิมตาม name (หรือจะใช้ slug/code ก็ได้)
-    let farmRef = farms.doc();
-    const existing = await farms.where("name","==", String(name).trim()).limit(1).get();
-    if (!existing.empty) farmRef = existing.docs[0].ref;
+      const now = admin.firestore.FieldValue.serverTimestamp();
 
-    await db.runTransaction(async tx => {
-      const snap = await tx.get(farmRef);
-
-      // สร้างถ้ายังไม่มี / อัปเดตถ้ามีอยู่แล้ว → เลี่ยง precondition ด้วย merge:true
-      tx.set(farmRef, {
-        name: String(name).trim(),
-        lat: Number(lat),
-        lng: Number(lng),
-        address: address ?? null,
-        updatedAt: FieldValue.serverTimestamp(),
-        ...(snap.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
+      // (สำคัญ) ทำให้ idempotent และเลี่ยง precondition: ใช้ set(..., {merge:true})
+      const farmRef = db.collection("farms").doc(); // auto-id
+      await farmRef.set({
+        name,
+        location: { lat, lng, address: address || null },
+        createdBy: uid,
+        createdAt: now,
+        updatedAt: now,
+        membersCount: admin.firestore.FieldValue.increment ? admin.firestore.FieldValue.increment(1) : 1,
       }, { merge: true });
 
-      // ผูกสมาชิก (ก็ใช้ set merge true เช่นกัน)
+      // สมาชิกก็ใช้ merge:true เช่นกัน
       const memberRef = farmRef.collection("members").doc(uid);
-      tx.set(memberRef, {
+      await memberRef.set({
+        uid,
         role: "owner",
-        joinedAt: FieldValue.serverTimestamp(),
+        joinedAt: now,
       }, { merge: true });
-    });
 
-    res.json({ ok:true, farmId: farmRef.id });
-  } catch (e: any) {
-    const code = e?.code || "internal";
-    const msg  = e?.message || String(e);
-    const status =
-      code === "invalid-argument" ? 400 :
-      code === "unauthenticated"  ? 401 :
-      code === "permission-denied"? 403 :
-      code === "failed-precondition"? 400 : 500;
+      const farmDoc = await farmRef.get();
+      const payload = { ok: true, farmId: farmRef.id, farm: { id: farmRef.id, ...(farmDoc.data() || {}) } };
 
-    // ใส่ข้อความให้ครบ (จะได้ไม่เจอ “FAILED_PRECONDITION:” เปล่าๆ)
-    res.status(status).json({ error: `${code}: ${msg}` });
-  }
-});
+      console.log("[createOrJoinFarm] ok", { uid, farmId: farmRef.id, ms: Date.now() - t0 });
+      res.json(payload);
+    } catch (e: any) {
+      // log ให้ครบทุกฟิลด์ที่สำคัญ เพื่อตามรอยได้ใน Logs Explorer
+      console.error("[createOrJoinFarm] error", {
+        code: e?.code,
+        name: e?.name,
+        message: e?.message,
+        stack: e?.stack,
+      });
+
+      // ส่งข้อความกลับไปให้หน้าเว็บแบบอ่านง่าย
+      const code = (e?.code || "").toString();
+      const msg  = e?.message || String(e);
+      // แปลง gRPC code 9 → HTTP 412 ให้สื่อความหมายกว่าเดิม
+      const http = code === "9" || /FAILED_PRECONDITION/i.test(msg) ? 412 : 400;
+      res.status(http).json({ error: msg || "FAILED_PRECONDITION" });
+    }
+  })
+);
 
 /* ---------- myFarm (คืน 200 เสมอ) ---------- */
 export const myFarm = onRequest(
@@ -182,6 +196,22 @@ export const harvests = onRequest(
     } catch (e: any) {
       console.error("harvests error:", e);
       res.status(400).json({ error: e?.message || String(e) });
+    }
+  })
+);
+
+export const pingFirestore = onRequest(
+  { region: "asia-southeast1" },
+  withCors(async (_req, res) => {
+    try {
+      const now = admin.firestore.FieldValue.serverTimestamp();
+      const ref = db.collection("_diagnostics").doc("ping");
+      await ref.set({ at: now }, { merge: true });
+      const snap = await ref.get();
+      res.json({ ok: true, at: snap.get("at") || null });
+    } catch (e: any) {
+      console.error("[pingFirestore] error", e);
+      res.status(500).json({ error: e?.message || String(e) });
     }
   })
 );

@@ -215,12 +215,6 @@ function buildAuthHeaders(){
 }
 
 /* ========== fetch helpers (เหลือชุดเดียว และ prefix API_BASE อัตโนมัติ) ========== */
-async function authedGet(url){
-  const r = await fetch(toApiUrl(url), { headers: buildAuthHeaders() });
-  const t = await r.text(); let j; try{ j = JSON.parse(t); }catch{ throw new Error(`HTTP ${r.status}: ${t}`); }
-  if (!r.ok || j.error) throw new Error(j.error || t);
-  return j;
-}
 async function authedPost(url, body){
   const r = await fetch(toApiUrl(url), { method:'POST', headers: buildAuthHeaders(), body: JSON.stringify(body||{}) });
   const t = await r.text(); let j; try{ j = JSON.parse(t); }catch{ throw new Error(`HTTP ${r.status}: ${t}`); }
@@ -346,7 +340,11 @@ document.getElementById('saveFarm').onclick = async ()=>{
         currentFarm = await getMyFarm();
         modal.hidden = true;
         resolve(true);
-      }catch(e){ console.error('createOrJoinFarm failed:', e); alert(e.message||e); }
+      } catch(e) {
+  console.error('createOrJoinFarm failed:', e);
+  const msg = (e && e.message) ? e.message : String(e);
+  alert(`createOrJoinFarm failed:\n${msg}`);
+}
     };
   });
 }
