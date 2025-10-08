@@ -9,22 +9,33 @@ if (!_admin.apps || !_admin.apps.length) {
 const db = admin.firestore();
 
 /* ---------- CORS (allow Vercel + localhost) ---------- */
-const ALLOWED_ORIGINS = new Set([
+const ALLOWED_ORIGINS = new Set<string>([
   "https://liff-test-finh.vercel.app",
-  "http://localhost:3000", "http://127.0.0.1:3000",
-  "http://localhost:5173", "http://127.0.0.1:5173",
+  "http://localhost:3000",
+  "http://localhost:5173",
 ]);
 
-function withCors(handler:(req:any,res:any)=>any){
-  return async (req:any, res:any) => {
-    const origin = req.headers.origin;
-    if (origin && ALLOWED.has(origin)) res.set("Access-Control-Allow-Origin", origin);
-    res.set("Vary","Origin");
-    res.set("Access-Control-Allow-Methods","GET,POST,OPTIONS");
-    res.set("Access-Control-Allow-Headers","Content-Type, x-line-id-token, x-line-access-token, x-dev-uid, Authorization");
-    res.set("Access-Control-Max-Age","7200");
+function setCors(req: any, res: any) {
+  const origin = req.headers.origin as string | undefined;
+  // ปลอดภัยสุด: ให้ผ่านทุก origin ก่อน (เพราะคุณไม่ได้ใช้ credentials)
+  // ถ้าอยาก whitelist จริง ค่อยเปลี่ยนกลับเป็น ALLOWED_ORIGINS.has(origin)
+  res.set("Access-Control-Allow-Origin", origin && ALLOWED_ORIGINS.has(origin) ? origin : "*");
+  res.set("Vary", "Origin");
+  res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.set(
+    "Access-Control-Allow-Headers",
+    "Content-Type, x-line-id-token, x-line-access-token, authorization, x-dev-uid"
+  );
+  res.set("Access-Control-Max-Age", "86400");
+  // ใส่ลายน้ำไว้เช็คว่าเป็นโค้ดล่าสุดจริง
+  res.set("X-Finh-Version", "farm.ts@" + new Date().toISOString());
+}
+
+function withCors(handler: (req:any,res:any)=>Promise<void>|void){
+  return async (req:any,res:any)=>{
+    setCors(req,res);
     if (req.method === "OPTIONS") { res.status(204).send(""); return; }
-    return handler(req,res);
+    await handler(req,res);
   };
 }
 
@@ -50,7 +61,9 @@ async function getMyFarmFor(uid: string) {
 }
 
 /* ---------- สร้าง/เข้าร่วมฟาร์ม ---------- */
-export const createOrJoinFarm = onRequest({ region: "asia-southeast1" }, withCors(async (req, res) => {
+export const createOrJoinFarm = onRequest(
+  { region: "asia-southeast1" }, 
+  withCors(async (req, res) => {
     if (req.method === "OPTIONS") { res.status(204).send(""); return; } // เผื่อไว้
 
     try {
