@@ -9,27 +9,30 @@ if (!_admin.apps || !_admin.apps.length) {
 const db = admin.firestore();
 
 /* ---------- CORS (allow Vercel + localhost) ---------- */
-const ALLOWED_ORIGINS = new Set<string>([
+const ALLOWED_ORIGINS = new Set([
   "https://liff-test-finh.vercel.app",
   "http://localhost:3000",
+  "http://127.0.0.1:3000",
   "http://localhost:5173",
+  "http://127.0.0.1:5173",
 ]);
-function setCors(req: any, res: any) {
-  const origin = req.headers.origin as string | undefined;
-  const allow = origin && ALLOWED_ORIGINS.has(origin) ? origin : "*";
-  res.set("Access-Control-Allow-Origin", allow);
-  res.set("Vary", "Origin");
-  res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  res.set(
-    "Access-Control-Allow-Headers",
-    "Content-Type, x-line-id-token, x-line-access-token, authorization, x-dev-uid"
-  );
-  res.set("Access-Control-Max-Age", "86400");
-}
-function withCors(handler: (req: any, res: any) => Promise<void> | void) {
-  return async (req: any, res: any) => {
-    setCors(req, res);
+
+function withCors(handler: (req:any,res:any)=>Promise<void>|void) {
+  return async (req:any, res:any) => {
+    const origin = req.headers.origin;
+    if (origin && ALLOWED_ORIGINS.has(origin)) {
+      res.set("Access-Control-Allow-Origin", origin);
+      res.set("Vary", "Origin");
+    } else {
+      res.set("Access-Control-Allow-Origin", "https://liff-test-finh.vercel.app");
+      res.set("Vary", "Origin");
+    }
+    res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type, x-dev-uid, Authorization");
+    res.set("Access-Control-Max-Age", "7200");
+
     if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+
     await handler(req, res);
   };
 }
@@ -56,28 +59,24 @@ async function getMyFarmFor(uid: string) {
 }
 
 /* ---------- สร้าง/เข้าร่วมฟาร์ม ---------- */
-export const createOrJoinFarmV2 = onRequest(
-  { region: "asia-southeast1" },
-  withCors(async (req, res) => {
-    const t0 = Date.now();
+export const createOrJoinFarmV2 = onRequest({ region: "asia-southeast1" }, withCors(async (req, res) => {
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; } // เผื่อไว้
+
     try {
-      if (req.method !== "POST") { res.status(405).json({ error: "method not allowed" }); return; }
+      const uid = (req.get("x-dev-uid") || "").trim();
+      const { name, lat, lng, address } = (req.body || {}) as any;
+      if (!uid) return res.status(401).json({ error: "missing x-dev-uid" });
 
-      const uid = await requireUID(req);
-      const b = (req.body || {}) as any;
-      const name = (b.name ?? "").toString().trim();
-      const lat  = typeof b.lat === "number" ? b.lat : Number(b.lat);
-      const lng  = typeof b.lng === "number" ? b.lng : Number(b.lng);
-      const address = b.address ? String(b.address) : null;
-
-      if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-        res.status(400).json({ error: "invalid name/lat/lng" }); return;
+      const LAT = Number(lat), LNG = Number(lng);
+      if (!name || !Number.isFinite(LAT) || !Number.isFinite(LNG)) {
+        return res.status(400).json({ error: "invalid name/lat/lng" });
       }
 
       const now = admin.firestore.FieldValue.serverTimestamp();
       const farmRef = db.collection("farms").doc();
       await farmRef.set({
-        name, location: { lat, lng, address: address || null },
+        name: String(name).trim(),
+        location: { lat: LAT, lng: LNG, address: address ?? null },
         createdBy: uid, createdAt: now, updatedAt: now,
       }, { merge: true });
 
@@ -86,13 +85,11 @@ export const createOrJoinFarmV2 = onRequest(
       }, { merge: true });
 
       const snap = await farmRef.get();
-      res.set('x-finh-version', 'farm.ts:createOrJoinFarmV2@' + new Date().toISOString());
-      res.json({ ok:true, farmId: farmRef.id, farm: { id: farmRef.id, ...(snap.data()||{}) } });
-    } catch (e:any) {
-      console.error("[createOrJoinFarmV2] error", { code:e?.code, name:e?.name, message:e?.message, stack:e?.stack });
-      const msg = e?.message || String(e);
-      const isPrecond = (e?.code === 9) || /FAILED_PRECONDITION/i.test(msg);
-      res.status(isPrecond ? 412 : 400).json({ error: msg });
+      res.json({ ok: true, farmId: farmRef.id, farm: { id: farmRef.id, ...(snap.data() || {}) } });
+    } catch (e: any) {
+      console.error("[createOrJoinFarmV2] error", { code:e?.code, message:e?.message, stack:e?.stack });
+      const isPrecond = (e?.code === 9) || /FAILED_PRECONDITION/i.test(e?.message || "");
+      res.status(isPrecond ? 412 : 400).json({ error: e?.message || String(e) });
     }
   })
 );
