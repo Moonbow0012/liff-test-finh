@@ -15,6 +15,8 @@ const ALLOWED_ORIGINS = new Set<string>([
   "http://localhost:5173",
 ]);
 
+const FIREBASE_PROGRESS_URL = "https://getprogress-iyipepekja-as.a.run.app";
+
 function setCors(req: any, res: any) {
   const origin = req.headers.origin as string | undefined;
   // ปลอดภัยสุด: ให้ผ่านทุก origin ก่อน (เพราะคุณไม่ได้ใช้ credentials)
@@ -188,3 +190,18 @@ export const pingFirestore = onRequest(
     }
   })
 );
+
+export const devices = onRequest(
+  { region: "asia-southeast1" },
+  withCors(async (_req, res) => {
+    // proxy GET /api/devices
+    const url = `${FIREBASE_PROGRESS_URL}/api/devices`;
+    const r = await fetch(url, { headers: { "Content-Type":"application/json" }});
+    const text = await r.text();
+    try { res.status(r.status).json(JSON.parse(text)); }
+    catch { res.status(r.status).send(text); }
+  })
+);
+
+
+

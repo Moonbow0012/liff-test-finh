@@ -157,15 +157,16 @@
 
 <script>
 /* ========== Config ========== */
+/* ========== Config ========== */
 const LIFF_ID = '2008085765-YDwJrxy9';
-const FIREBASE_PROGRESS_URL = 'https://getprogress-iyipepekja-as.a.run.app';
+const FIREBASE_PROGRESS_URL = 'https://getprogress-iyipepekja-as.a.run.app'; // Cloud Run (ถ้า CORS ยังไม่เปิด ให้ใช้ proxy ใน Functions ตามที่สรุปด้านล่าง)
 
-/* === ชี้ไป Cloud Functions ตรง (แก้ให้ตรงโปรเจกต์/region ของคุณ) === */
+/* === Cloud Functions Base === */
 const API_BASE = "https://asia-southeast1-finh-iot-ai.cloudfunctions.net";
 const isAbsUrl = (u) => /^https?:\/\//i.test(u);
 const toApiUrl = (u) => {
   if (isAbsUrl(u)) return u;
-  if (u.startsWith('/tracking/')) u = u.slice('/tracking'.length); // ตัด /tracking ออก
+  if (u.startsWith('/tracking/')) u = u.slice('/tracking'.length);
   return `${API_BASE}${u}`;
 };
 
@@ -214,64 +215,37 @@ function buildAuthHeaders(){
   return h;
 }
 
-  async function authedGet(url) {
-    const r = await fetch(toApiUrl(url), { headers: buildAuthHeaders() });
-    const t = await r.text();
-    let j;
-    try { j = JSON.parse(t); }
-    catch { throw new Error(`HTTP ${r.status}: ${t}`); }
-    if (!r.ok || j.error) throw new Error(j.error || t);
-    return j;
-  }
-
-  async function authedPost(url, body) {
-    const r = await fetch(toApiUrl(url), {
-      method: 'POST',
-      headers: buildAuthHeaders(),
-      body: JSON.stringify(body || {})
-    });
-    const t = await r.text();
-    let j;
-    try { j = JSON.parse(t); }
-    catch { throw new Error(`HTTP ${r.status}: ${t}`); }
-    if (!r.ok || j.errors || j.error) {
-      throw new Error(j.errors ? JSON.stringify(j.errors) : (j.error || t));
-    }
-    return j;
-  }
-
-  // ผูกเป็น global ให้แน่ใจว่าเรียกได้จากทุกที่
-  window.authedGet = authedGet;
-  window.authedPost = authedPost;
-
-/* ========== fetch helpers (เหลือชุดเดียว และ prefix API_BASE อัตโนมัติ) ========== */
-async function authedPost(url, body){
-  const r = await fetch(toApiUrl(url), { method:'POST', headers: buildAuthHeaders(), body: JSON.stringify(body||{}) });
-  const t = await r.text(); let j; try{ j = JSON.parse(t); }catch{ throw new Error(`HTTP ${r.status}: ${t}`); }
-  if (!r.ok || j.errors || j.error) throw new Error(j.errors ? JSON.stringify(j.errors) : (j.error || t));
+/* ========== fetch helpers (หนึ่งชุด | global) ========== */
+async function authedGet(url) {
+  const r = await fetch(toApiUrl(url), { headers: buildAuthHeaders() });
+  const t = await r.text();
+  let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
+  if (!r.ok || j.error) throw new Error(j.error || t);
   return j;
-    if (typeof window.authedGet !== 'function') {
-    window.authedGet = async function authedGet(url){
-      const r = await fetch(toApiUrl(url), { headers: buildAuthHeaders() });
-      const t = await r.text(); let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
-      if (!r.ok || j.error) throw new Error(j.error || t);
-      return j;
-    };
-  }
 }
 
-/* ========== Formatters (DKPI) ========== */
-const formatPh   = p => (p==null || Number.isNaN(+p)) ? '—' : `${(+p).toFixed(1)} pH`;
-const formatTemp = t => (t==null || Number.isNaN(+t)) ? '—' : `${(+t).toFixed(1)}°C`;
-function formatWater(w){
-  if (w==null || Number.isNaN(+w)) return '—';
-  const n = +w; if (n <= 1) return `${Math.round(n*100)}%`; if (n <= 100) return `${Math.round(n)}%`; return String(n);
+async function authedPost(url, body) {
+  const r = await fetch(toApiUrl(url), {
+    method: 'POST',
+    headers: buildAuthHeaders(),
+    body: JSON.stringify(body || {})
+  });
+  const t = await r.text();
+  let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
+  if (!r.ok || j.errors || j.error) {
+    throw new Error(j.errors ? JSON.stringify(j.errors) : (j.error || t));
+  }
+  return j;
 }
+window.authedGet = authedGet;
+window.authedPost = authedPost;
 
 /* ========== Progress & Shadow ========== */
 async function getProgress(deviceId){
+  // ถ้า Cloud Run ยังไม่เปิด CORS: เปลี่ยนให้เรียก proxy ใน Functions แทน (ดูส่วน farm.ts ด้านล่าง) แล้วแก้เป็น: return authedGet(`/progress?deviceId=${encodeURIComponent(deviceId)}`);
   const url = `${FIREBASE_PROGRESS_URL}?deviceId=${encodeURIComponent(deviceId)}`;
-  const r = await fetch(url, { cache:'no-store' }); const j = await r.json();
+  const r = await fetch(url, { cache:'no-store' });
+  const j = await r.json();
   if (!r.ok || j.error) throw new Error(j.error || JSON.stringify(j));
   return j;
 }
@@ -283,9 +257,11 @@ async function loadProgress(deviceId){
   if (barFillDash) barFillDash.style.width = pct!=null ? `${pct}%` : '0%';
   if (growthLevelDash) growthLevelDash.textContent = lvl;
 }
+
+/* ใช้ GraphQL ผ่าน proxy ใน Functions (กัน CORS) */
 async function loadShadow(deviceId){
   const Q = 'query($deviceid:String!){ shadow(deviceid:$deviceid){ data } }';
-  const r = await authedPost('/api/gql', { query: Q, variables: { deviceid: deviceId }});
+  const r = await authedPost('/gql', { query: Q, variables: { deviceid: deviceId }});
   const data = r?.data?.shadow?.data || {};
   const ph   = getNum(data, ['soil_ph','pH','ph']);
   const temp = getNum(data, ['temp','temperature','temp_c']);
@@ -295,7 +271,7 @@ async function loadShadow(deviceId){
 }
 async function renderDkpiForDevice(deviceId){
   const Q = 'query($deviceid:String!){ shadow(deviceid:$deviceid){ data } }';
-  const r = await authedPost('/api/gql', { query: Q, variables: { deviceid: deviceId }});
+  const r = await authedPost('/gql', { query: Q, variables: { deviceid: deviceId }});
   const data = r?.data?.shadow?.data || {};
   const water = getNum(data, ['water_level','water','level','wl','water_percent','waterPct']);
   const ph    = getNum(data, ['soil_ph','pH','ph']);
@@ -307,7 +283,6 @@ async function renderDkpiForDevice(deviceId){
 }
 
 /* ========== Google Maps: รอให้พร้อมก่อนค่อย init ========== */
-// callback จากสคริปต์ Maps → ยิง event 'gmaps-ready'
 window.__gmapsReady = () => window.dispatchEvent(new Event('gmaps-ready'));
 function waitForMapsReady(){
   return new Promise((resolve, reject)=>{
@@ -327,64 +302,20 @@ function initMapOnce(){
 
   const latEl = document.getElementById('lat'), lngEl = document.getElementById('lng');
   const setLL = (lat,lng) => { gmarker.setPosition({lat,lng}); gmap.panTo({lat,lng}); latEl.value=lat.toFixed(6); lngEl.value=lng.toFixed(6); };
-
   gmap.addListener('click', (e)=> setLL(e.latLng.lat(), e.latLng.lng()));
 
-  // Autocomplete (ยังใช้ได้อยู่; เป็น warning เฉย ๆ)
   places = new google.maps.places.Autocomplete(document.getElementById('placeSearch'));
-  places.addListener('place_changed', ()=>{
-    const p = places.getPlace(); const ll = p.geometry?.location; if (ll) setLL(ll.lat(), ll.lng());
-  });
+  places.addListener('place_changed', ()=>{ const p = places.getPlace(); const ll = p.geometry?.location; if (ll) setLL(ll.lat(), ll.lng()); });
 
   if (navigator.geolocation) navigator.geolocation.getCurrentPosition(pos=> setLL(pos.coords.latitude, pos.coords.longitude));
 }
 
-/* ========== Farm onboarding (ครั้งเดียว) ========== */
-async function getMyFarm(){
-  try { const r = await authedGet('/tracking/myFarm'); return r?.farm || null; }
-  catch { return null; }
-}
-async function ensureFarmOnce(){
-  const fromServer = await getMyFarm();
-  const fromLocal  = localStorage.getItem('finh_onboarded') === '1';
-  if (fromServer || fromLocal){ currentFarm = fromServer; return true; }
-
-  await waitForMapsReady();
-  initMapOnce();
-  const modal = document.getElementById('farmModal');
-  modal.hidden = false;
-
-  return await new Promise((resolve)=>{
-document.getElementById('saveFarm').onclick = async ()=>{
-  const nameEl = document.getElementById('farmName');
-  const latEl  = document.getElementById('lat');
-  const lngEl  = document.getElementById('lng');
-  const addrEl = document.getElementById('placeSearch');
-
-  const name = (nameEl?.value || '').trim();
-  const lat  = Number((latEl?.value || '').trim());
-  const lng  = Number((lngEl?.value || '').trim());
-  const address = (addrEl?.value || '').trim() || null;
-
-  if (!name || Number.isNaN(lat) || Number.isNaN(lng)) {
-    alert('กรอกชื่อฟาร์มและตำแหน่งให้ครบ (lat/lng ต้องเป็นตัวเลข)');
-    return;
-  }
-
-  try{
-    const res = await authedPost('/tracking/createOrJoinFarm', { name, lat, lng, address });
-    // success: ปิด modal / reload farm
-    localStorage.setItem('finh_onboarded', '1');
-        currentFarm = await getMyFarm();
-        modal.hidden = true;
-        resolve(true);
-      } catch(e) {
-  console.error('createOrJoinFarm failed:', e);
-  const msg = (e && e.message) ? e.message : String(e);
-  alert(`createOrJoinFarm failed:\n${msg}`);
-}
-    };
-  });
+/* ========== Formatters (DKPI) ========== */
+const formatPh   = p => (p==null || Number.isNaN(+p)) ? '—' : `${(+p).toFixed(1)} pH`;
+const formatTemp = t => (t==null || Number.isNaN(+t)) ? '—' : `${(+t).toFixed(1)}°C`;
+function formatWater(w){
+  if (w==null || Number.isNaN(+w)) return '—';
+  const n = +w; if (n <= 1) return `${Math.round(n*100)}%`; if (n <= 100) return `${Math.round(n)}%`; return String(n);
 }
 
 /* ========== Sparkline (pH & Temp) ========== */
@@ -429,7 +360,6 @@ function drawSpark(deviceId){
   const tPad=(tMax-tMin)*.15+.5; tMin=Math.max(0,tMin-tPad); tMax=tMax+tPad;
   const xAt=i=>pad.l+(i/Math.max(1,n-1))*iw, yAt=(v,min,max)=>pad.t+(1-((clamp(v,min,max)-min)/(max-min)))*ih;
 
-  // grid
   const grid='#e5efe933'; const lbl='#ffffffbf'; const phColor='#34d399', tColor='#60a5fa';
   const ctxLine=(arr,min,max,color)=>{ const ctx2=ctx; ctx2.strokeStyle=color; ctx2.lineWidth=2; ctx2.beginPath(); let moved=false;
     for(let i=0;i<n;i++){ const v=arr[i]; if(typeof v!=='number') continue; const x=xAt(i), y=yAt(v,min,max); if(!moved){ctx2.moveTo(x,y); moved=true;} else ctx2.lineTo(x,y); }
@@ -444,11 +374,63 @@ function drawSpark(deviceId){
   ctx.textAlign='right'; ctx.fillText(`Temp ${Math.round(tMin)}–${Math.round(tMax)}°C`, pad.l+iw, pad.t-4);
 }
 
+/* ========== Farm onboarding (ครั้งเดียว) ========== */
+async function getMyFarm(){
+  try { const r = await authedGet('/tracking/myFarm'); return r?.farm || null; }
+  catch { return null; }
+}
+async function ensureFarmOnce(){
+  const fromServer = await getMyFarm();
+  const fromLocal  = localStorage.getItem('finh_onboarded') === '1';
+
+  // แก้ logic: อย่าตั้ง currentFarm = null โดยอัตโนมัติ
+  if (fromServer){ currentFarm = fromServer; return true; }
+  if (fromLocal){ /* เคย onboard แล้ว แต่ server ยังว่าง → ให้ไปเปิด modal */ }
+
+  await waitForMapsReady();
+  initMapOnce();
+  const modal = document.getElementById('farmModal');
+  modal.hidden = false;
+
+  return await new Promise((resolve)=>{
+    document.getElementById('saveFarm').onclick = async ()=>{
+      const nameEl = document.getElementById('farmName');
+      const latEl  = document.getElementById('lat');
+      const lngEl  = document.getElementById('lng');
+      const addrEl = document.getElementById('placeSearch');
+
+      const name = (nameEl?.value || '').trim();
+      const lat  = Number((latEl?.value || '').trim());
+      const lng  = Number((lngEl?.value || '').trim());
+      const address = (addrEl?.value || '').trim() || null;
+
+      if (!name || Number.isNaN(lat) || Number.isNaN(lng)) {
+        alert('กรอกชื่อฟาร์มและตำแหน่งให้ครบ (lat/lng ต้องเป็นตัวเลข)');
+        return;
+      }
+
+      try{
+        await authedPost('/tracking/createOrJoinFarm', { name, lat, lng, address });
+        localStorage.setItem('finh_onboarded', '1');
+        currentFarm = await getMyFarm();
+        modal.hidden = true;
+        resolve(true);
+      } catch(e) {
+        console.error('createOrJoinFarm failed:', e);
+        const msg = (e && e.message) ? e.message : String(e);
+        alert(`createOrJoinFarm failed:\n${msg}`);
+      }
+    };
+  });
+}
+
 /* ========== Harvest Tracking ========== */
 async function fetchHarvests(limit=50){
   if (!currentFarm?.id) currentFarm = await getMyFarm();
-  const url = `/tracking/harvests?farmId=${encodeURIComponent(currentFarm?.id||'')}&limit=${limit}&includeLineage=1`;
-  return authedGet(url);
+  if (!currentFarm?.id) throw new Error('missing farmId (ยังไม่มีฟาร์มสำหรับผู้ใช้นี้)');
+  const url = `/tracking/harvests?farmId=${encodeURIComponent(currentFarm.id)}&limit=${limit}&includeLineage=1`;
+  const r = await authedGet(url);
+  return r?.items || [];
 }
 function fmtDate(ts){
   if (!ts) return '—';
@@ -477,7 +459,7 @@ function renderHarvestTable(data){
   });
 }
 document.addEventListener('click', (e)=>{ if (e.target && e.target.id === 'reloadHarvest'){ fetchHarvests().then(renderHarvestTable).catch(console.error); } });
-async function refreshHarvestCard(){ try{ const data = await fetchHarvests(); renderHarvestTable(data); } catch(e){ console.error(e); } }
+async function refreshHarvestCard(){ try{ const items = await fetchHarvests(); renderHarvestTable({ items }); } catch(e){ console.error(e); } }
 
 /* ========== Boot ========== */
 window.addEventListener('DOMContentLoaded', async () => {
@@ -495,10 +477,13 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     const sel = $('deviceSelect');
 
-    // devices
+    // โหลด devices — แนะนำให้เรียกผ่าน proxy ใน Functions เพื่อกัน CORS
     let devices = [];
-    try{ const resp = await authedGet('/api/devices'); devices = Array.isArray(resp?.devices)?resp.devices:[]; }
-    catch(e){ showError(e); }
+    try{
+      // ถ้าใช้ Cloud Run ตรง ต้องเปิด CORS ฝั่งนั้นก่อน: const resp = await authedGet(`${FIREBASE_PROGRESS_URL}/api/devices`);
+      const resp = await authedGet('/devices'); // ← proxy ผ่าน Functions (แนะนำ)
+      devices = Array.isArray(resp?.devices)?resp.devices:[];
+    } catch(e){ showError(e); }
 
     if (sel){
       sel.innerHTML='';
@@ -523,16 +508,18 @@ window.addEventListener('DOMContentLoaded', async () => {
     setInterval(()=>{ if (!sel?.value) return; loadProgress(sel.value).catch(showError); loadShadow(sel.value).catch(showError); }, 60000);
     if (sel?.value) drawSpark(sel.value);
     window.addEventListener('resize', ()=>{ if (sel?.value) drawSpark(sel.value); });
+
     await refreshHarvestCard();
   }catch(e){ showError(e); }
 });
 </script>
+
 <script>
   // ใช้เป็น callback เมื่อสคริปต์ Maps โหลดเสร็จ
   window.__gmapsReady = () => window.dispatchEvent(new Event('gmaps-ready'));
-  </script>
+</script>
 <script
-async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA2Gx7cUFVTHVR65w371mqgkUCWNlO1SgY&libraries=places&loading=async"
-  async defer></script>
+  async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA2Gx7cUFVTHVR65w371mqgkUCWNlO1SgY&libraries=places&loading=async"
+  defer></script>
 </body>
 </html>
