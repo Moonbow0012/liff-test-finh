@@ -3,8 +3,8 @@
   "main": "lib/index.js",
   "engines": { "node": "20" },
   "scripts": {
-    "build": "tsc -p .",
     "clean": "rimraf lib",
+    "build": "tsc -p .",
     "deploy:farm": "firebase deploy --only functions:createOrJoinFarm,functions:myFarm,functions:harvests"
   },
   "dependencies": {

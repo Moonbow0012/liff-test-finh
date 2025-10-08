@@ -199,13 +199,22 @@ async function ensureLogin(){
   else liff.login({ withLoginOnExternalBrowser:true, redirectUri });
   return new Promise(()=>{});
 }
+
 function buildAuthHeaders(){
   const idToken = sessionStorage.getItem('line_id_token') || liff.getIDToken();
   const access  = sessionStorage.getItem('line_access_token') || liff.getAccessToken();
-  const h = { 'Content-Type':'application/json' };
+  const h = { 'Content-Type': 'application/json' };
+
   if (idToken && idToken.includes('.')) h['x-line-id-token'] = idToken;
   else if (access) h['x-line-access-token'] = access;
-  else throw new Error('No LINE token available');
+
+  // เพิ่มบรรทัดนี้ (ชั่วคราวช่วง dev):
+  try {
+    const decoded = liff.getDecodedIDToken?.();
+    const uid = decoded?.sub || decoded?.amr?.[0] || 'dev-user';
+    h['x-dev-uid'] = uid;
+  } catch { h['x-dev-uid'] = 'dev-user'; }
+
   return h;
 }
 

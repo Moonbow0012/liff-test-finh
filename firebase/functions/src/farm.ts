@@ -1,55 +1,47 @@
-// functions/src/tracking.ts
 import { onRequest } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 
 const _admin: any = admin || {};
-if (!_admin.apps || !_admin.apps.length) admin.initializeApp();
+if (!_admin.apps || !_admin.apps.length) {
+  try { admin.initializeApp(); } catch (e) { /* ignore double init */ }
+}
 const db = admin.firestore();
 
-/* ===== CORS helper (อนุญาต Vercel + localhost) ===== */
-const ALLOWED_ORIGINS = new Set([
+/* ---------- CORS (allow Vercel + localhost) ---------- */
+const ALLOWED_ORIGINS = new Set<string>([
   "https://liff-test-finh.vercel.app",
   "http://localhost:3000",
   "http://localhost:5173",
 ]);
-
 function setCors(req: any, res: any) {
-  const origin = req.headers.origin;
+  const origin = req.headers.origin as string | undefined;
   const allow = origin && ALLOWED_ORIGINS.has(origin) ? origin : "*";
   res.set("Access-Control-Allow-Origin", allow);
   res.set("Vary", "Origin");
   res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  // เพิ่ม header ที่เราส่งจากหน้าเว็บ (สำคัญมาก)
   res.set(
     "Access-Control-Allow-Headers",
-    "Content-Type, x-line-id-token, x-line-access-token, authorization"
+    "Content-Type, x-line-id-token, x-line-access-token, authorization, x-dev-uid"
   );
   res.set("Access-Control-Max-Age", "86400");
 }
-
-function withCors(
-  handler: (req: any, res: any) => void | Promise<void>
-) {
+function withCors(handler: (req: any, res: any) => Promise<void> | void) {
   return async (req: any, res: any) => {
     setCors(req, res);
-    if (req.method === "OPTIONS") {
-      res.status(204).send(""); // ตอบ preflight
-      return;
-    }
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
     await handler(req, res);
   };
 }
 
+/* ---------- Auth helper (ชั่วคราว) ---------- */
 async function requireUID(req: any): Promise<string> {
-  // ตัวอย่าง dev: ให้ผ่านไปก่อน
+  // ใช้ header ชั่วคราว ถ้าไม่มีก็ใช้ fixed uid
   const dev = req.headers["x-dev-uid"];
-  if (typeof dev === "string" && dev) return dev;
-  return "dev-user";
+  if (typeof dev === "string" && dev.trim()) return dev.trim();
+  return "dev-user"; // ชั่วคราวพอ onboarding ผ่าน (จะย้ายไป verify LINE/Firebase ภายหลัง)
 }
 
-/** ตรวจว่าผู้ใช้เป็นสมาชิกฟาร์มหรือยัง
- *  NOTE: โครงนี้เก็บ membership ใต้ farms/{farmId}/members/{uid} พร้อม field { uid, role }
- */
+/* ---------- ดึงฟาร์มของผู้ใช้ ---------- */
 async function getMyFarmFor(uid: string) {
   const snap = await db.collectionGroup("members")
     .where("uid", "==", uid)
@@ -62,20 +54,17 @@ async function getMyFarmFor(uid: string) {
   return { id: farmRef.id, ...(farmDoc.data() || {}) };
 }
 
-/** สร้าง/เข้าร่วมฟาร์ม (เด้งฟอร์มครั้งแรก) */
+/* ---------- สร้าง/เข้าร่วมฟาร์ม ---------- */
 export const createOrJoinFarm = onRequest(
-  { region: "asia-southeast1", cors: true },
-  async (req, res) => {
+  { region: "asia-southeast1" },
+  withCors(async (req, res) => {
     try {
       const uid = await requireUID(req);
       const { name, lat, lng, address } = (req.body || {}) as {
-        name?: string;
-        lat?: number;
-        lng?: number;
-        address?: string | null;
+        name?: string; lat?: number; lng?: number; address?: string | null;
       };
 
-      // ถ้ามีฟาร์มอยู่แล้ว -> ส่งฟาร์มเดิมกลับ
+      // ถ้ามีอยู่แล้ว ส่งกลับ
       const existing = await getMyFarmFor(uid);
       if (existing) {
         res.json({ ok: true, farmId: existing.id, farm: existing });
@@ -97,93 +86,70 @@ export const createOrJoinFarm = onRequest(
         membersCount: 1,
       });
       await farmRef.collection("members").doc(uid).set({
-        uid,
-        role: "owner",
-        joinedAt: now,
+        uid, role: "owner", joinedAt: now,
       });
 
       const farmDoc = await farmRef.get();
       res.json({ ok: true, farmId: farmRef.id, farm: { id: farmRef.id, ...(farmDoc.data() || {}) } });
-      return;
     } catch (e: any) {
+      console.error("createOrJoinFarm error:", e);
       res.status(400).json({ error: e?.message || String(e) });
     }
-  }
+  })
 );
 
-/** ดึงฟาร์มของฉัน (ใช้เช็คว่า onboarding แล้วหรือยัง) */
+/* ---------- myFarm (คืน 200 เสมอ) ---------- */
 export const myFarm = onRequest(
-  { region: "asia-southeast1", cors: true },
-  async (req, res) => {
+  { region: "asia-southeast1" },
+  withCors(async (req, res) => {
     try {
       const uid = await requireUID(req);
       const farm = await getMyFarmFor(uid);
-      res.json({ farm });
-      return;
+      res.json({ ok: true, farm: farm || null });
     } catch (e: any) {
-      res.status(400).json({ error: e?.message || String(e) });
+      console.error("myFarm error:", e);
+      // อย่า 400 — คืน 200 + ok:false ให้หน้าเว็บ handle ต่อ
+      res.json({ ok: false, error: e?.message || String(e), farm: null });
     }
-  }
+  })
 );
 
-/** คืนรายการ Harvest + lineage แบบย่อย ๆ สำหรับการ์ด Tracking */
+/* ---------- harvests + lineage ---------- */
 export const harvests = onRequest(
-  { region: "asia-southeast1", cors: true },
-  async (req, res) => {
+  { region: "asia-southeast1" },
+  withCors(async (req, res) => {
     try {
-      // ปกติควรเช็ค uid และสิทธิ์ดู farm นี้ด้วย
       await requireUID(req);
-
       const farmId = String(req.query.farmId || "");
-      const limit = Math.min(200, Number(req.query.limit || 50));
-      if (!farmId) {
-        res.status(400).json({ error: "missing farmId" });
-        return;
-      }
+      const limit  = Math.min(200, Number(req.query.limit || 50));
+      if (!farmId) { res.status(400).json({ error: "missing farmId" }); return; }
 
-      // อ่าน harvests: farms/{farmId}/harvests (คาดว่ามี field date: Timestamp)
-      const hs = await db
-        .collection(`farms/${farmId}/harvests`)
-        .orderBy("date", "desc")
-        .limit(limit)
-        .get();
+      const hs = await db.collection(`farms/${farmId}/harvests`)
+        .orderBy("date", "desc").limit(limit).get();
 
       const items: any[] = [];
       for (const h of hs.docs) {
         const hvData = (h.data() as any) || {};
         const hv = { id: h.id, ...hvData };
 
-        // lineage จาก pivot: farms/{farmId}/harvest_crops (cropId หลายตัว)
-        const piv = await db
-          .collection(`farms/${farmId}/harvest_crops`)
-          .where("harvestId", "==", h.id)
-          .get();
+        const piv = await db.collection(`farms/${farmId}/harvest_crops`)
+          .where("harvestId", "==", h.id).get();
 
-        const cropIds = piv.docs.map((d) => (d.data() as any).cropId).filter(Boolean);
+        const cropIds = piv.docs.map(d => (d.data() as any).cropId).filter(Boolean);
         let from: any = null;
-
         if (cropIds.length) {
-          // หาตัวอย่างหนึ่ง crop เพื่อขึ้นชื่อ tray/pond (เอา code ถ้ามี ไม่งั้นใช้ id)
           const cdoc = await db.doc(`farms/${farmId}/crops/${cropIds[0]}`).get();
           const crop = cdoc.exists ? ({ id: cdoc.id, ...(cdoc.data() as any) }) : null;
-
-          let tray: string | null = null;
-          let pond: string | null = null;
+          let tray: string | null = null, pond: string | null = null;
 
           if (crop) {
             if (crop.trayId) {
               const tdoc = await db.doc(`farms/${farmId}/trays/${crop.trayId}`).get();
-              if (tdoc.exists) {
-                const t = tdoc.data() as any;
-                tray = t?.code || tdoc.id;
-              }
+              if (tdoc.exists) { const t = tdoc.data() as any; tray = t?.code || tdoc.id; }
             }
             if (crop.pondId) {
               const pdoc = await db.doc(`farms/${farmId}/ponds/${crop.pondId}`).get();
-              if (pdoc.exists) {
-                const p = pdoc.data() as any;
-                pond = p?.code || pdoc.id;
-              }
+              if (pdoc.exists) { const p = pdoc.data() as any; pond = p?.code || pdoc.id; }
             }
           }
           from = { pond, tray, crops: cropIds };
@@ -199,10 +165,10 @@ export const harvests = onRequest(
         });
       }
 
-      res.json({ items });
-      return;
+      res.json({ ok: true, items });
     } catch (e: any) {
+      console.error("harvests error:", e);
       res.status(400).json({ error: e?.message || String(e) });
     }
-  }
+  })
 );
