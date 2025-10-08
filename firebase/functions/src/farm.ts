@@ -50,7 +50,7 @@ async function getMyFarmFor(uid: string) {
 }
 
 /* ---------- สร้าง/เข้าร่วมฟาร์ม ---------- */
-export const createOrJoinFarmV2 = onRequest({ region: "asia-southeast1" }, withCors(async (req, res) => {
+export const createOrJoinFarm = onRequest({ region: "asia-southeast1" }, withCors(async (req, res) => {
     if (req.method === "OPTIONS") { res.status(204).send(""); return; } // เผื่อไว้
 
     try {
