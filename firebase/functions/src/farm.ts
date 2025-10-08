@@ -11,29 +11,20 @@ const db = admin.firestore();
 /* ---------- CORS (allow Vercel + localhost) ---------- */
 const ALLOWED_ORIGINS = new Set([
   "https://liff-test-finh.vercel.app",
-  "http://localhost:3000",
-  "http://127.0.0.1:3000",
-  "http://localhost:5173",
-  "http://127.0.0.1:5173",
+  "http://localhost:3000", "http://127.0.0.1:3000",
+  "http://localhost:5173", "http://127.0.0.1:5173",
 ]);
 
-function withCors(handler: (req:any,res:any)=>Promise<void>|void) {
+function withCors(handler:(req:any,res:any)=>any){
   return async (req:any, res:any) => {
     const origin = req.headers.origin;
-    if (origin && ALLOWED_ORIGINS.has(origin)) {
-      res.set("Access-Control-Allow-Origin", origin);
-      res.set("Vary", "Origin");
-    } else {
-      res.set("Access-Control-Allow-Origin", "https://liff-test-finh.vercel.app");
-      res.set("Vary", "Origin");
-    }
-    res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-    res.set("Access-Control-Allow-Headers", "Content-Type, x-dev-uid, Authorization");
-    res.set("Access-Control-Max-Age", "7200");
-
+    if (origin && ALLOWED.has(origin)) res.set("Access-Control-Allow-Origin", origin);
+    res.set("Vary","Origin");
+    res.set("Access-Control-Allow-Methods","GET,POST,OPTIONS");
+    res.set("Access-Control-Allow-Headers","Content-Type, x-line-id-token, x-line-access-token, x-dev-uid, Authorization");
+    res.set("Access-Control-Max-Age","7200");
     if (req.method === "OPTIONS") { res.status(204).send(""); return; }
-
-    await handler(req, res);
+    return handler(req,res);
   };
 }
 
