@@ -465,6 +465,104 @@ if (refreshBtnEl) refreshBtnEl.onclick = refreshAllWithSpin;
     console.debug('[KPI]', {docId: deviceDocId, src, keys: raw ? Object.keys(raw).slice(0,6) : []});
   }
 
+  /* ===== Controls wiring ===== */
+
+/** แปลง raw shadow/progress -> relay states */
+function extractRelays(raw){
+  const m = _flattenValues(raw||{});
+  const get = (k)=> {
+    const v = m[k.toLowerCase()];
+    if (v == null) return null;
+    const s = String(v).toLowerCase();
+    if (s === 'on' || s === '1' || s === 'true') return true;
+    if (s === 'off' || s === '0' || s === 'false') return false;
+    return null;
+  };
+  return {
+    relay1: get('relay1'),
+    relay2: get('relay2'),
+    relay3: get('relay3'),
+    relay4: get('relay4')
+  };
+}
+
+/** อัปเดตสถานะสวิตช์จากข้อมูลล่าสุด */
+function renderControlsFromRaw(raw){
+  const R = extractRelays(raw||{});
+  const set = (id,val)=>{
+    const el = document.getElementById(id);
+    if (el) el.checked = !!val;
+  };
+  set('ctrl-water',   R.relay1);
+  set('ctrl-harvest', R.relay2);
+  set('ctrl-drain',   R.relay3);
+}
+
+/** ส่งคำสั่งไป backend — พยายาม 2 ทาง: REST แล้ว fallback เป็น GQL */
+async function sendControl(relayKey, on){
+  const sel = document.getElementById('deviceSelect');
+  const deviceDocId = (sel && sel.value) || localStorage.getItem('deviceId');
+  if (!deviceDocId) throw new Error('no device selected');
+
+  const nxId = toNxId(deviceDocId);
+  const payload = { deviceId: deviceDocId, relay: relayKey, value: on ? 'on' : 'off' };
+
+  // 1) REST: /control/relay (ถ้ามี)
+  try {
+    await authedPost('/control/relay', payload);
+    return { ok:true, via: 'rest' };
+  } catch (e) {
+    console.warn('[control] REST failed, fallback GQL', e?.message || e);
+  }
+
+  // 2) Fallback GQL: พุช patch ใส่ shadow (schema แต่ละที่ต่างกัน—ลองรูปแบบที่พบบ่อย)
+  const tries = [
+    { q: 'mutation($deviceid:String!,$patch:JSON!){ pushShadow(deviceid:$deviceid, patch:$patch){ ok } }',
+      v: { deviceid: nxId, patch: { [relayKey]: on ? 'on' : 'off' } } },
+    { q: 'mutation($deviceid:String!,$key:String!,$value:String!){ setRelay(deviceid:$deviceid, key:$key, value:$value){ ok } }',
+      v: { deviceid: nxId, key: relayKey, value: on ? 'on':'off' } },
+  ];
+  for (const t of tries){
+    try {
+      await authedPost('/gql', { query: t.q, variables: t.v });
+      return { ok:true, via: 'gql' };
+    } catch(e){}
+  }
+  throw new Error('control endpoint not available');
+}
+
+/** bind switch events */
+function bindControlEvents(){
+  const bind = (id, relay) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', async ()=>{
+      const want = el.checked;
+      try{
+        document.getElementById('ctrlHint').hidden = false;
+        document.getElementById('ctrlHint').textContent = 'Sending…';
+        await sendControl(relay, want);
+        document.getElementById('ctrlHint').textContent = 'Sent ✔';
+        // refresh ค่า shadow ให้กราฟ/ค่าสดด้วย
+        const sel = document.getElementById('deviceSelect');
+        const docId = (sel && sel.value) || localStorage.getItem('deviceId');
+        if (docId) { await renderDkpiForDevice(docId); }
+      }catch(e){
+        document.getElementById('ctrlHint').textContent = 'Failed to send';
+        // revert toggle
+        el.checked = !want;
+        alert(`ส่งคำสั่งไม่สำเร็จ: ${e?.message||e}`);
+      }finally{
+        setTimeout(()=>{ const h=document.getElementById('ctrlHint'); if(h) h.hidden=true; }, 1200);
+      }
+    });
+  };
+  bind('ctrl-water','relay1');
+  bind('ctrl-harvest','relay2');
+  bind('ctrl-drain','relay3');
+}
+bindControlEvents();
+
   /* Google Maps (พร้อมค่าเริ่มต้น) */
   function waitForMapsReady(){
     return new Promise((resolve, reject)=>{
