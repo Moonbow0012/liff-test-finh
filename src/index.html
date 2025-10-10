@@ -13,14 +13,26 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><img src="./assets/finh_logo.png" alt="FINH"></div>
-    <div class="right">
-      <select id="deviceSelect" title="Select device">
-        <option value="" selected disabled>Loading devices…</option>
-      </select>
-      <button id="refreshBtn" class="icon-btn" title="Refresh">⟳</button>
+  <!-- LEFT: LINE user -->
+  <div class="left user" id="lineUser">
+    <img id="lineAvatar" class="avatar" alt="" hidden>
+    <div class="user-meta">
+      <b id="lineName">LINE User</b>
+      <small id="lineUid" class="muted" hidden></small>
     </div>
-  </header>
+  </div>
+
+  <!-- CENTER: Brand -->
+  <div class="brand"><img src="./assets/finh_logo.png" alt="FINH"></div>
+
+  <!-- RIGHT: controls -->
+  <div class="right">
+    <select id="deviceSelect" title="Select device">
+      <option value="" selected disabled>Loading devices…</option>
+    </select>
+    <button id="refreshBtn" class="icon-btn" title="Refresh">⟳</button>
+  </div>
+</header>
 
   <section class="dashboard" id="dashboard" hidden>
     <div class="dash-hero">
@@ -80,11 +92,11 @@
         <div class="dash-spark">
           <canvas id="spark" width="800" height="220" aria-label="pH & Temp chart"></canvas>
         </div>
-        <div class="legend" style="margin-top:8px;font-size:12px;">
-          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#16a34a;margin-right:6px;"></span> pH
-          &nbsp;&nbsp;
-          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#2563eb;margin-right:6px;"></span> Temp
-        </div>
+<div class="legend">
+  <span class="dot ph"></span> pH
+  <span class="gap"></span>
+  <span class="dot temp"></span> Temp
+</div>
       </div>
 
       <div class="dash-card alerts">
@@ -224,6 +236,22 @@
     else liff.login({ withLoginOnExternalBrowser:true, redirectUri });
     return new Promise(()=>{});
   }
+
+  try {
+  const prof = await liff.getProfile();
+  const name = prof?.displayName || 'LINE User';
+  if (document.getElementById('lineName')) document.getElementById('lineName').textContent = name;
+  if (document.getElementById('lineUid') && prof?.userId) {
+    document.getElementById('lineUid').textContent = prof.userId;
+    document.getElementById('lineUid').hidden = false;
+  }
+  if (document.getElementById('lineAvatar') && prof?.pictureUrl) {
+    const img = document.getElementById('lineAvatar');
+    img.src = prof.pictureUrl;
+    img.hidden = false;
+  }
+} catch {}
+
   function getStableUid(){
     let uid = localStorage.getItem('finh_uid');
     if (uid) return uid;
@@ -420,9 +448,11 @@
     for(let g=0; g<=4; g++){ const y=pad.t+g*(ih/4); ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+iw,y); ctx.stroke(); }
     ctxLine(s.ph, phMin, phMax, phColor);
     ctxLine(s.temp, tMin, tMax, tColor);
-    ctx.fillStyle=lbl; ctx.font='12px system-ui,-apple-system,Segoe UI,Roboto';
-    ctx.textAlign='left';  ctx.fillText(`pH ${phMin.toFixed(1)}–${phMax.toFixed(1)}`, pad.l, pad.t-4);
-    ctx.textAlign='right'; ctx.fillText(`Temp ${Math.round(tMin)}–${Math.round(tMax)}°C`, pad.l+iw, pad.t-4);
+ctx.fillStyle=lbl;
+ctx.font='600 12px system-ui,-apple-system,Segoe UI,Roboto';
+ctx.textAlign='center';
+ctx.fillText(`pH ${phMin.toFixed(1)}–${phMax.toFixed(1)}`, pad.l + iw*0.25, pad.t-6);
+ctx.fillText(`Temp ${Math.round(tMin)}–${Math.round(tMax)}°C`, pad.l + iw*0.75, pad.t-6);
   }
 
   /* Farm onboarding */
