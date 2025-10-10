@@ -273,11 +273,12 @@ async function getProgress(docId){
 
 async function loadProgress(docId){
   const prog = await getProgress(docId);
-  const pct = typeof data.percent === 'number' ? Math.max(0, Math.min(100, data.percent)) : null;
-  const lvl = normalizeLevel(data.level);
+  const pct = typeof prog.percent === 'number' ? Math.max(0, Math.min(100, prog.percent)) : null;
+  const lvl = normalizeLevel(prog.level); 
   if (pctTopDash) pctTopDash.textContent = pct!=null ? pct.toFixed(1) : '—';
   if (barFillDash) barFillDash.style.width = pct!=null ? `${pct}%` : '0%';
   if (growthLevelDash) growthLevelDash.textContent = lvl;
+
   return prog;
 }
 
@@ -617,7 +618,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     const sel = $('deviceSelect');
 
 try {
-  DEVICES = await listDevices();
+  DEVICES = await listDevices();                   // โหลดรายการ
+  DEVICE_BY_ID = Object.fromEntries(DEVICES.map(d => [docIdOf(d), d])); // <-- สร้าง map docId -> meta
 } catch (e) { showError(e); }
 
 if (sel){
@@ -629,13 +631,13 @@ if (sel){
   } else {
     DEVICES.forEach(d => {
       const op = document.createElement('option');
-      op.value = d.deviceId || d.id || d.name;
-      op.textContent = d.name || d.deviceId || d.id;
+      op.value = docIdOf(d);                       // value = Firestore docId
+      op.textContent = d.name || nxIdOf(d);        // ชื่ออุปกรณ์ (แสดงผล)
       sel.appendChild(op);
     });
     const saved = localStorage.getItem('deviceId');
     const hasSaved = saved && [...sel.options].some(o => o.value === saved);
-    sel.value = hasSaved ? saved : (DEVICES[0].deviceId || DEVICES[0].id || DEVICES[0].name);
+    sel.value = hasSaved ? saved : docIdOf(DEVICES[0]);
     localStorage.setItem('deviceId', sel.value);
   }
 }
@@ -667,32 +669,35 @@ if (sel){
 
 async function refreshAll(){
   const sel = document.getElementById('deviceSelect');
+  const docId = (sel && sel.value) || localStorage.getItem('deviceId');
+  if (!docId) return; // ยังไม่ได้เลือกอุปกรณ์
+
+  // ไม่ต้องเรียก loadShadow ซ้ำ เพราะ renderDkpiForDevice จะไป /gql อยู่แล้ว
+  await Promise.all([
+    renderDkpiForDevice(docId),
+    loadProgress(docId),
+  ]);
+}
+
 if (sel){
   sel.onchange = async () => {
     localStorage.setItem('deviceId', sel.value);
     await refreshAll();
   };
 }
-  const docId = (sel && sel.value) || localStorage.getItem('deviceId');
-  if (!docId) return; // ยังไม่ได้เลือกอุปกรณ์
 
-  await Promise.all([
-    renderDkpiForDevice(docId), // ใช้ docId → ภายใน map เป็น nexiiotDeviceId เอง
-    loadProgress(docId),
-    loadShadow(docId),
-  ]);
+$('refreshBtn') && ($('refreshBtn').onclick = refreshAll);
+
+// เรียกครั้งแรก + ตั้ง interval รีเฟรชเบา ๆ
+await refreshAll();
+setInterval(() => {
+  const sel2 = document.getElementById('deviceSelect');
+  if (!sel2?.value) return;
+  refreshAll().catch(showError);
+}, 60000);
+} catch (e) {
+  showError(e);
 }
-
-    $('refreshBtn') && ($('refreshBtn').onclick = refreshAll);
-    sel && (sel.onchange = async ()=>{ localStorage.setItem('deviceId', sel.value||''); await refreshAll(); });
-
-    await refreshAll();
-    setInterval(()=>{ if (!sel?.value) return; loadProgress(sel.value).catch(showError); loadShadow(sel.value).catch(showError); }, 60000);
-    if (sel?.value) drawSpark(sel.value);
-    window.addEventListener('resize', ()=>{ if (sel?.value) drawSpark(sel.value); });
-
-    await refreshHarvestCard();
-  }catch(e){ showError(e); }
 });
 })();
 </script>
