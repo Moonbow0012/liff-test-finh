@@ -75,6 +75,56 @@ const PROGRESS_ALLOWED = new Set([
   "updatedAt",
 ]);
 
+
+const ALLOWED_ORIGINS = new Set<string>([
+  "https://liff-test-finh.vercel.app",
+  "http://localhost:3000",
+  "http://localhost:5173"
+]);
+function setCors(req: any, res: any) {
+  const origin = req.headers.origin as string | undefined;
+  res.set("Vary", "Origin");
+  res.set("Access-Control-Allow-Origin", origin && ALLOWED_ORIGINS.has(origin) ? origin : "*");
+  res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.set(
+    "Access-Control-Allow-Headers",
+    "Content-Type, x-line-id-token, x-line-access-token, authorization, x-dev-uid"
+  );
+  res.set("Access-Control-Max-Age", "86400");
+}
+function withCors(handler: (req: any, res: any) => Promise<void> | void) {
+  return async (req: any, res: any) => {
+    setCors(req, res);
+    if (req.method === "OPTIONS") {
+      res.status(204).send("");
+      return;
+    }
+    await handler(req, res);
+  };
+}
+
+export const gql = onRequest(
+  {
+    cors: true,
+    secrets: [OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, SERVICE_USERNAME, SERVICE_PASSWORD, OAUTH_TOKEN_URL, NX_GRAPHQL_URL],
+  },
+  async (req, res) => {
+    try {
+      if (req.method !== "POST") {
+        res.status(405).json({ error: "method not allowed" });
+        return;
+      }
+      const { access_token } = await getNxAccessToken(); // <- ฟังก์ชันนี้คุณมีอยู่แล้วในไฟล์เดียวกัน
+      const query = (req.body && req.body.query) || "query { __typename }";
+      const variables = (req.body && req.body.variables) || {};
+      const r = await gqlRequest(access_token, { query, variables }); // <- คุณมี gqlRequest อยู่แล้ว
+      res.status(r.status).json({ ok: r.ok, status: r.status, data: r.data });
+    } catch (e:any) {
+      res.status(500).json({ ok: false, error: String(e?.message || e) });
+    }
+  }
+);
+
 // -----------------------------------------------------------------------------
 // Small Utils
 // -----------------------------------------------------------------------------
@@ -494,5 +544,23 @@ export const diagWhoami = onRequest({ cors: true }, async (_req: Request, res: R
   }
 });
 
+export const devices = onRequest({ cors: true }, async (_req, res) => {
+  try {
+    const snap = await db.collection("devices").get();
+    const devices = snap.docs.map((d) => {
+      const data = d.data() || {};
+      return {
+        deviceId: d.id,
+        name: data.name || data.deviceId || d.id,
+        ...data,
+      };
+    });
+    res.json({ devices });
+  } catch (e: any) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
 export { trkCreate, trkUpdate, trkGet, lineWebhookTracking } from "./tracking.js";
 export { createOrJoinFarm, myFarm, harvests, pingFirestore } from "./farm.js";
+
