@@ -159,7 +159,6 @@
 (async () => {
   'use strict';
 let DEVICES = [];
-try { DEVICES = await listDevices(); } catch(e) { showError(e); }
 
 const LIFF_ID = '2008085765-YDwJrxy9';
 const FIREBASE_PROGRESS_URL = 'https://getprogress-iyipepekja-as.a.run.app'; // Cloud Run (ถ้า CORS ยังไม่เปิด ให้ใช้ proxy ใน Functions ตามที่สรุปด้านล่าง)
@@ -232,6 +231,11 @@ async function authedGet(url) {
   let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
   if (!r.ok || j.error) throw new Error(j.error || t);
   return j;
+}
+
+async function listDevices(){
+  const resp = await authedGet('/devices');  // proxy ผ่าน Functions กัน CORS
+  return Array.isArray(resp?.devices) ? resp.devices : [];
 }
 
 async function authedPost(url, body) {
@@ -524,13 +528,33 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     const sel = $('deviceSelect');
 
-    // โหลด devices — แนะนำให้เรียกผ่าน proxy ใน Functions เพื่อกัน CORS
-    let DEVICES = [];
-    try{
-      // ถ้าใช้ Cloud Run ตรง ต้องเปิด CORS ฝั่งนั้นก่อน: const resp = await authedGet(`${FIREBASE_PROGRESS_URL}/api/devices`);
-      const resp = await authedGet('/devices'); // ← proxy ผ่าน Functions (แนะนำ)
-      DEVICES = Array.isArray(resp?.devices)?resp.devices:[];
-    } catch(e){ showError(e); }
+try {
+  DEVICES = await listDevices();
+} catch (e) { showError(e); }
+
+if (sel){
+  sel.innerHTML = '';
+  if (DEVICES.length === 0){
+    const op = document.createElement('option');
+    op.value=''; op.textContent='No device';
+    sel.appendChild(op);
+  } else {
+    DEVICES.forEach(d => {
+      const op = document.createElement('option');
+      op.value = d.deviceId || d.id || d.name;
+      op.textContent = d.name || d.deviceId || d.id;
+      sel.appendChild(op);
+    });
+    const saved = localStorage.getItem('deviceId');
+    const hasSaved = saved && [...sel.options].some(o => o.value === saved);
+    sel.value = hasSaved ? saved : (DEVICES[0].deviceId || DEVICES[0].id || DEVICES[0].name);
+    localStorage.setItem('deviceId', sel.value);
+  }
+}
+
+try {
+DEVICES = await listDevices();      // ใช้ helper ที่เพิ่งเพิ่ม
+} catch(e) { showError(e); }
 
     if (sel){
       sel.innerHTML='';
