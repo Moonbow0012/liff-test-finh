@@ -98,6 +98,44 @@
 </div>
       </div>
 
+      <div class="dash-card controls">
+  <div class="controls-head">
+    <h3>Controls</h3>
+    <small class="muted">ส่งคำสั่งไปยังอุปกรณ์ที่เลือก</small>
+  </div>
+
+  <div class="controls-grid">
+    <label class="ctrl">
+      <div class="ctrl-meta">
+        <b>Water turbine</b>
+        <small>relay1</small>
+      </div>
+      <input type="checkbox" id="ctrl-water" data-relay="relay1">
+      <span class="switch" aria-hidden="true"></span>
+    </label>
+
+    <label class="ctrl">
+      <div class="ctrl-meta">
+        <b>Harvest</b>
+        <small>relay2</small>
+      </div>
+      <input type="checkbox" id="ctrl-harvest" data-relay="relay2">
+      <span class="switch" aria-hidden="true"></span>
+    </label>
+
+    <label class="ctrl">
+      <div class="ctrl-meta">
+        <b>Drain</b>
+        <small>relay3</small>
+      </div>
+      <input type="checkbox" id="ctrl-drain" data-relay="relay3">
+      <span class="switch" aria-hidden="true"></span>
+    </label>
+  </div>
+
+  <div class="ctrl-hint" id="ctrlHint" hidden></div>
+</div>
+
       <div class="dash-card alerts">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <h3>Critical Alerts</h3>
@@ -812,3 +850,4 @@ if (sel){
 <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA2Gx7cUFVTHVR65w371mqgkUCWNlO1SgY&libraries=places&loading=async&callback=__gmapsReady"></script>
 </body>
 </html>
+
