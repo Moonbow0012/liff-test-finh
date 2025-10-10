@@ -156,8 +156,9 @@
 </div>
 
 <script>
-/* ========== Config ========== */
-/* ========== Config ========== */
+let DEVICES = [];
+try { DEVICES = await listDevices(); } catch(e) { showError(e); }
+
 const LIFF_ID = '2008085765-YDwJrxy9';
 const FIREBASE_PROGRESS_URL = 'https://getprogress-iyipepekja-as.a.run.app'; // Cloud Run (ถ้า CORS ยังไม่เปิด ให้ใช้ proxy ใน Functions ตามที่สรุปด้านล่าง)
 
@@ -440,9 +441,9 @@ async function ensureFarmOnce(){
 }
 
 const saved = localStorage.getItem('deviceId');
-if (devices.length > 0) {
+if (DEVICES.length > 0) {
   // ถ้าไม่มี saved หรือ saved ไม่อยู่ในลิสต์ → เลือกตัวแรก
-  const firstId = devices[0].deviceId || devices[0].id || devices[0].name;
+  const firstId = DEVICES[0].deviceId || DEVICES[0].id || DEVICES[0].name;
   const hasSaved = saved && [...sel.options].some(o => o.value === saved);
   sel.value = hasSaved ? saved : firstId;
   localStorage.setItem('deviceId', sel.value);
@@ -522,19 +523,19 @@ window.addEventListener('DOMContentLoaded', async () => {
     const sel = $('deviceSelect');
 
     // โหลด devices — แนะนำให้เรียกผ่าน proxy ใน Functions เพื่อกัน CORS
-    let devices = [];
+    let DEVICES = [];
     try{
       // ถ้าใช้ Cloud Run ตรง ต้องเปิด CORS ฝั่งนั้นก่อน: const resp = await authedGet(`${FIREBASE_PROGRESS_URL}/api/devices`);
       const resp = await authedGet('/devices'); // ← proxy ผ่าน Functions (แนะนำ)
-      devices = Array.isArray(resp?.devices)?resp.devices:[];
+      DEVICES = Array.isArray(resp?.devices)?resp.devices:[];
     } catch(e){ showError(e); }
 
     if (sel){
       sel.innerHTML='';
-      if (devices.length===0){
+      if (DEVICES.length===0){
         const op=document.createElement('option'); op.value=''; op.textContent='No device'; sel.appendChild(op);
       }else{
-        devices.forEach(d=>{ const op=document.createElement('option'); op.value=d.deviceId; op.textContent=d.name||d.deviceId; sel.appendChild(op); });
+        DEVICES.forEach(d=>{ const op=document.createElement('option'); op.value=d.deviceId; op.textContent=d.name||d.deviceId; sel.appendChild(op); });
         const saved = localStorage.getItem('deviceId'); if (saved && [...sel.options].some(o=>o.value===saved)) sel.value=saved;
       }
     }
