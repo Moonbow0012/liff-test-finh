@@ -203,7 +203,7 @@ async function gqlRequest<T = any>(
 // Shadow Fetcher (ใช้สคีมาที่คุณอินโทรสเปคมา: shadow(deviceid){ deviceid data rev modified })
 // -----------------------------------------------------------------------------
 async function fetchNexiiotShadowValues(devCfg: DeviceConfig): Promise<Record<string, any>> {
-  const deviceId = devCfg.nexiiotDeviceId?.trim();
+  const deviceId = (devCfg.nexiiotDeviceId ?? (devCfg as any).deviceId ?? "").toString().trim();
   if (!deviceId) throw new Error("missing_nexiiotDeviceId_in_device_config");
 
   const { access_token } = await getNxAccessToken();
@@ -505,11 +505,12 @@ export const pollNexiiot = onSchedule(
       try {
         const out = await computeAndMaybePersist(deviceId, { dryRun: false });
         okCount++;
-        perDevice[deviceId] = {
-          ok: true,
-          updatedAt: out.updatedAtIso,
-          values: out.values, // เก็บค่าดิบล่าสุดไว้ที่ functions_state
-        };
+perDevice[deviceId] = {
+  ok: true,
+  updatedAt: out.updatedAtIso,
+  values: out.values,
+  error: FieldValue.delete(),
+};
         logger.info(JSON.stringify({ tag: "pollNexiiot", deviceId, ok: true, updatedAt: out.updatedAtIso }));
       } catch (e: any) {
         errCount++;
@@ -518,9 +519,12 @@ export const pollNexiiot = onSchedule(
         logger.error(JSON.stringify({ tag: "pollNexiiot", deviceId, ok: false, error: errMsg }));
       }
     }
-
     await STATE_REF.set(
-      { status: "idle", runId, lastRunAt: nowTs(), okCount, errCount, perDevice },
+      { status: "idle", runId, lastRunAt: nowTs(), okCount, errCount, perDevice: FieldValue.delete() },
+      { merge: true }
+    );
+    await STATE_REF.set(
+      { perDevice },
       { merge: true }
     );
   }

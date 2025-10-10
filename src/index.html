@@ -159,6 +159,15 @@
 (async () => {
   'use strict';
 let DEVICES = [];
+let DEVICE_BY_ID = {};
+const docIdOf = (d) => d.deviceId || d.id || d.name;
+const nxIdOf  = (d) => d.nexiiotDeviceId || d.deviceId || d.id;
+
+// แปลง docId (ค่าที่อยู่ใน <select>) ให้เป็น nexiiotDeviceId เพื่อเรียก /gql
+function toNxId(deviceDocId){
+  const meta = DEVICE_BY_ID[deviceDocId];
+  return meta ? nxIdOf(meta) : deviceDocId;
+}
 
 const LIFF_ID = '2008085765-YDwJrxy9';
 const FIREBASE_PROGRESS_URL = 'https://getprogress-iyipepekja-as.a.run.app'; // Cloud Run (ถ้า CORS ยังไม่เปิด ให้ใช้ proxy ใน Functions ตามที่สรุปด้านล่าง)
@@ -257,12 +266,9 @@ window.authedPost = authedPost;
 /* ========== Progress & Shadow ========== */
 async function getProgress(deviceId){
   // ถ้า Cloud Run ยังไม่เปิด CORS: เปลี่ยนให้เรียก proxy ใน Functions แทน (ดูส่วน farm.ts ด้านล่าง) แล้วแก้เป็น: return authedGet(`/progress?deviceId=${encodeURIComponent(deviceId)}`);
-  const url = `${FIREBASE_PROGRESS_URL}?deviceId=${encodeURIComponent(deviceId)}`;
-  const r = await fetch(url, { cache:'no-store' });
-  const j = await r.json();
-  if (!r.ok || j.error) throw new Error(j.error || JSON.stringify(j));
-  return j;
+  return authedGet(`/getProgress?deviceId=${encodeURIComponent(deviceDocId)}`);
 }
+
 async function loadProgress(deviceId){
   const data = await getProgress(deviceId);
   const pct = typeof data.percent === 'number' ? Math.max(0, Math.min(100, data.percent)) : null;
@@ -273,31 +279,34 @@ async function loadProgress(deviceId){
 }
 
 /* ใช้ GraphQL ผ่าน proxy ใน Functions (กัน CORS) */
-async function loadShadow(deviceId){
+async function loadShadow(deviceDocId){
+  const nxId = toNxId(deviceDocId);
   const Q = 'query($deviceid:String!){ shadow(deviceid:$deviceid){ data } }';
-  const r = await authedPost('/gql', { query: Q, variables: { deviceid: deviceId }});
+  const r = await authedPost('/gql', { query: Q, variables: { deviceid: nxId }});
   const data = r?.data?.shadow?.data || {};
   const ph   = getNum(data, ['soil_ph','pH','ph']);
   const temp = getNum(data, ['temp','temperature','temp_c']);
-  updateSeries(deviceId, typeof ph==='number'?ph:null, typeof temp==='number'?temp:null);
-  drawSpark(deviceId);
+  updateSeries(deviceDocId, typeof ph==='number'?ph:null, typeof temp==='number'?temp:null);
+  drawSpark(deviceDocId);
   return { data, ph, temp };
 }
-async function renderDkpiForDevice(deviceId){
+
+async function renderDkpiForDevice(deviceDocId){
   let raw = null;
 
-  // 1) พยายามจาก GraphQL /gql ก่อน
+  // 1) ลองจาก GraphQL ก่อน (ใช้ nexiiotDeviceId)
   try {
+    const nxId = toNxId(deviceDocId);
     const Q = 'query($deviceid:String!){ shadow(deviceid:$deviceid){ data } }';
-    const r = await authedPost('/gql', { query: Q, variables: { deviceid: deviceId }});
+    const r = await authedPost('/gql', { query: Q, variables: { deviceid: nxId }});
     raw = r?.data?.shadow?.data || null;
   } catch {}
 
-  // 2) ถ้าไม่ได้ ให้ fallback มา Progress (perDevice[deviceId].values)
+  // 2) ถ้าไม่ได้ ให้ fallback จาก /getProgress (คีย์เป็น docId)
   if (!raw) {
     try {
-      const prog = await getProgress(deviceId);
-      raw = prog?.perDevice?.[deviceId]?.values || prog?.values || prog || null;
+      const prog = await getProgress(deviceDocId);
+      raw = prog?.values || prog?.perDevice?.[deviceDocId]?.values || null;
     } catch {}
   }
 
@@ -306,12 +315,9 @@ async function renderDkpiForDevice(deviceId){
   document.getElementById('dkpi-ph').textContent    = formatPh(ph);
   document.getElementById('dkpi-temp').textContent  = formatTemp(temp);
 
-  // อัปเดตกราฟ spark
-  updateSeries(deviceId, (typeof ph==='number'?ph:null), (typeof temp==='number'?temp:null));
-  drawSpark(deviceId);
-
-  // จำ device ที่เลือก
-  localStorage.setItem('deviceId', deviceId);
+  updateSeries(deviceDocId, (typeof ph==='number'?ph:null), (typeof temp==='number'?temp:null));
+  drawSpark(deviceDocId);
+  localStorage.setItem('deviceId', deviceDocId);
 }
 
 /* ========== Google Maps: รอให้พร้อมก่อนค่อย init ========== */
@@ -399,11 +405,11 @@ function extractKpis(raw){
   if (ph != null && (ph <= 0.1 || ph > 14)) ph = null;
 
   // Temp: เอาอุณหภูมิน้ำก่อน แล้วทั่วไป
-  let temp = _pickNumber(
-    m,
-    ['water_ph_temp','water_ec_temp','water_temp','temperature_in','temp_out','weather_temperature','soil_temperature'],
-    ['temp','temperature','_temp']   // contains
-  );
+let temp = _pickNumber(
+  m,
+  ['water_ec_temp','water_temp','temperature_in','temp_out','weather_temperature','soil_temperature'],
+  ['temp','temperature','_temp']
+);
 
   // Water: ระดับน้ำ/ความชื้น/ตัวชี้วัดที่เป็น % ก่อน
   let water = _pickNumber(
@@ -534,15 +540,6 @@ async function ensureFarmOnce(){
   });
 }
 
-const saved = localStorage.getItem('deviceId');
-if (DEVICES.length > 0) {
-  // ถ้าไม่มี saved หรือ saved ไม่อยู่ในลิสต์ → เลือกตัวแรก
-  const firstId = DEVICES[0].deviceId || DEVICES[0].id || DEVICES[0].name;
-  const hasSaved = saved && [...sel.options].some(o => o.value === saved);
-  sel.value = hasSaved ? saved : firstId;
-  localStorage.setItem('deviceId', sel.value);
-}
-
 /* ========== Harvest Tracking ========== */
 async function fetchHarvests(limit=50){
   // รวบรวมทุกทางที่จะได้ farmId
@@ -641,18 +638,29 @@ if (sel){
 }
 
 try {
-DEVICES = await listDevices();      // ใช้ helper ที่เพิ่งเพิ่ม
-} catch(e) { showError(e); }
+  DEVICES = await listDevices();                   // โหลดรายการ
+  DEVICE_BY_ID = Object.fromEntries(DEVICES.map(d => [docIdOf(d), d])); // <-- สร้าง map
+} catch (e) { showError(e); }
 
-    if (sel){
-      sel.innerHTML='';
-      if (DEVICES.length===0){
-        const op=document.createElement('option'); op.value=''; op.textContent='No device'; sel.appendChild(op);
-      }else{
-        DEVICES.forEach(d=>{ const op=document.createElement('option'); op.value=d.deviceId; op.textContent=d.name||d.deviceId; sel.appendChild(op); });
-        const saved = localStorage.getItem('deviceId'); if (saved && [...sel.options].some(o=>o.value===saved)) sel.value=saved;
-      }
-    }
+if (sel){
+  sel.innerHTML = '';
+  if (DEVICES.length === 0){
+    const op = document.createElement('option');
+    op.value=''; op.textContent='No device';
+    sel.appendChild(op);
+  } else {
+    DEVICES.forEach(d => {
+      const op = document.createElement('option');
+      op.value = docIdOf(d);                       // value = docId
+      op.textContent = d.name || nxIdOf(d);        // ชื่อแสดงผล
+      sel.appendChild(op);
+    });
+    const saved = localStorage.getItem('deviceId');
+    const hasSaved = saved && [...sel.options].some(o => o.value === saved);
+    sel.value = hasSaved ? saved : docIdOf(DEVICES[0]);
+    localStorage.setItem('deviceId', sel.value);
+  }
+}
 
 async function refreshAll(){
   if (!sel?.value) return;
