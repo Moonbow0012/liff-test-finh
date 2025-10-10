@@ -30,7 +30,7 @@ html,body{
 }
 .topbar .left{ justify-self: start; display:flex; align-items:center; gap:10px; min-width:0; }
 .topbar .brand{ justify-self: center; }
-.topbar .brand img{ height: 56px; display:block; }
+.topbar .brand img{ height: 100px; display:block; }
 .topbar .right{ justify-self:end; display:flex; gap:10px; align-items:center; }
 
 /* LINE user */
@@ -86,7 +86,7 @@ html,body{
 /* Mobile */
 @media (max-width:640px){
   .topbar{ padding:10px 12px; }
-  .topbar .brand img{ height:42px; }
+  .topbar .brand img{ height:100px; }
   .device-picker select{ max-width: 46vw; }
 }
 
