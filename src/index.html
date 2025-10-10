@@ -21,60 +21,55 @@
       <button id="refreshBtn" class="icon-btn" title="Refresh">⟳</button>
     </div>
   </header>
-<section class="dashboard" id="dashboard" hidden>
-  <div class="dash-hero">
-    <div>
-      <h1>Maturity Level</h1>
-     <!-- Level + Progress -->
-      <div class="dash-level">Level <span id="growthLevelDash" class="level">-</span></div>
-      <div class="progress-lite dash-progress">
-        <div class="track"><div id="barFillDash" class="fill"></div></div>
-        <div class="pct"><span id="pctTopDash">0</span>%</div>
+
+  <section class="dashboard" id="dashboard" hidden>
+    <div class="dash-hero">
+      <div>
+        <h1>Maturity Level</h1>
+        <!-- Level + Progress -->
+        <div class="dash-level">Level <span id="growthLevelDash" class="level">-</span></div>
+        <div class="progress-lite dash-progress">
+          <div class="track"><div id="barFillDash" class="fill"></div></div>
+          <div class="pct"><span id="pctTopDash">0</span>%</div>
+        </div>
+
+        <!-- KPIs -->
+        <div class="dash-kpis">
+          <!-- Water -->
+          <div class="dkpi kpi-water">
+            <svg class="kpi-ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 2s6 6.8 6 10a6 6 0 1 1-12 0C6 8.8 12 2 12 2Z"/>
+            </svg>
+            <small>Water</small>
+            <b id="dkpi-water">—</b>
+          </div>
+
+          <!-- pH -->
+          <div class="dkpi kpi-ph">
+            <svg class="kpi-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+              <path d="M7 3h10M13 3v6l3.6 7.2A2 2 0 0 1 14.8 19H9.2a2 2 0 0 1-1.8-2.8L11 9V3"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M9 13c1.8 1 3.6 1 6 0" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <small>pH Level</small>
+            <b id="dkpi-ph">—</b>
+          </div>
+
+          <!-- Temp -->
+          <div class="dkpi kpi-temp">
+            <svg class="kpi-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+              <path d="M14.75 14.78V5.58a3.67 3.67 0 0 0-7.33 0v9.2A4.53 4.53 0 1 0 15.67 17.5a4.53 4.53 0 0 0-.92-2.72Z"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M11.08 5.58v11" stroke-width="2" stroke-linecap="round"/>
+              <path d="M14.75 6.5h2.75M14.75 10.17h2.75M14.75 13.83h2.75"
+                    stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <small>Temperature (°C)</small>
+            <b id="dkpi-temp">—</b>
+          </div>
+        </div>
       </div>
-
-      <!-- KPIs -->
-<div class="dash-kpis">
-  <!-- Water (filled path) -->
-  <div class="dkpi kpi-water">
-    <svg class="kpi-ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M12 2s6 6.8 6 10a6 6 0 1 1-12 0C6 8.8 12 2 12 2Z"/>
-    </svg>
-    <small>Water</small>
-    <b id="dkpi-water">—</b>
-  </div>
-
-  <!-- pH (beaker – stroke paths only) -->
-  <div class="dkpi kpi-ph">
-    <svg class="kpi-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-      <!-- โครงบีกเกอร์ -->
-      <path d="M7 3h10M13 3v6l3.6 7.2A2 2 0 0 1 14.8 19H9.2a2 2 0 0 1-1.8-2.8L11 9V3"
-            stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-      <!-- เส้นระดับของเหลว -->
-      <path d="M9 13c1.8 1 3.6 1 6 0" stroke-width="2" stroke-linecap="round"/>
-    </svg>
-    <small>pH Level</small>
-    <b id="dkpi-ph">—</b>
-  </div>
-
-  <!-- Temperature (thermometer – ทุกเส้นเป็น path) -->
-  <div class="dkpi kpi-temp">
-    <svg class="kpi-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-      <!-- ลำตัวเทอร์โมมิเตอร์ -->
-      <path d="M14.75 14.78V5.58a3.67 3.67 0 0 0-7.33 0v9.2A4.53 4.53 0 1 0 15.67 17.5a4.53 4.53 0 0 0-.92-2.72Z"
-            stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-      <!-- แกนกลาง -->
-      <path d="M11.08 5.58v11" stroke-width="2" stroke-linecap="round"/>
-      <!-- ขีดสเกลด้านขวา (เป็น path ทั้งหมด) -->
-      <path d="M14.75 6.5h2.75M14.75 10.17h2.75M14.75 13.83h2.75"
-            stroke-width="2" stroke-linecap="round"/>
-    </svg>
-    <small>Temperature (°C)</small>
-    <b id="dkpi-temp">—</b>
-  </div>
-</div>
-      </div>
-    </div>            
-  </div>       
+    </div>
 
     <!-- Panels -->
     <div class="dash-panels">
@@ -103,666 +98,458 @@
         </ul>
       </div>
 
-<div class="dash-card harvests">
-  <div style="display:flex;justify-content:space-between;align-items:center;">
-    <h3>Harvest Tracking</h3>
-    <button id="reloadHarvest" class="dash-btn">Reload</button>
-  </div>
+      <div class="dash-card harvests">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h3>Harvest Tracking</h3>
+          <button id="reloadHarvest" class="dash-btn">Reload</button>
+        </div>
 
-  <div class="table-wrap">
-    <table class="tbl" id="harvestTable">
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Harvest</th>
-          <th>Weight (kg)</th>
-          <th>Moisture (%)</th>
-          <th>QC</th>
-          <th>From (Pond / Tray / Crop)</th>
-        </tr>
-      </thead>
-      <tbody><!-- filled by JS --></tbody>
-    </table>
-  </div>
-</div>
+        <div class="table-wrap">
+          <table class="tbl" id="harvestTable">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Harvest</th>
+                <th>Weight (kg)</th>
+                <th>Moisture (%)</th>
+                <th>QC</th>
+                <th>From (Pond / Tray / Crop)</th>
+              </tr>
+            </thead>
+            <tbody><!-- filled by JS --></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- Onboarding: Farm setup -->
-<div id="farmModal" class="modal" hidden>
-  <div class="modal-card">
-    <h3>ตั้งค่าฟาร์มครั้งแรก</h3>
+  <div id="farmModal" class="modal" hidden>
+    <div class="modal-card">
+      <h3>ตั้งค่าฟาร์มครั้งแรก</h3>
 
-    <label class="f-row">
-      <span>ชื่อฟาร์ม</span>
-      <input id="farmName" placeholder="เช่น Greenish Farm">
-    </label>
+      <label class="f-row">
+        <span>ชื่อฟาร์ม</span>
+        <input id="farmName" placeholder="เช่น Greenish Farm">
+      </label>
 
-    <label class="f-row">
-      <span>ค้นหาที่อยู่</span>
-      <input id="placeSearch" placeholder="พิมพ์ชื่อสถานที่/ที่อยู่">
-    </label>
+      <label class="f-row">
+        <span>ค้นหาที่อยู่</span>
+        <input id="placeSearch" placeholder="พิมพ์ชื่อสถานที่/ที่อยู่">
+      </label>
 
-    <div id="map" class="mapbox"></div>
+      <div id="map" class="mapbox"></div>
 
-    <div class="f-ll">
-      <input id="lat" placeholder="lat" readonly>
-      <input id="lng" placeholder="lng" readonly>
-    </div>
+      <div class="f-ll">
+        <input id="lat" placeholder="lat" readonly>
+        <input id="lng" placeholder="lng" readonly>
+      </div>
 
-    <div class="actions">
-      <button id="saveFarm" class="dash-btn">บันทึก</button>
+      <div class="actions">
+        <button id="saveFarm" class="dash-btn">บันทึก</button>
+      </div>
     </div>
   </div>
-</div>
 
 <script>
 (async () => {
   'use strict';
-let DEVICES = [];
-let DEVICE_BY_ID = {};
-const docIdOf = (d) => d.deviceId || d.id || d.name;
-const nxIdOf  = (d) => d.nexiiotDeviceId || d.deviceId || d.id;
 
-// แปลง docId (ค่าที่อยู่ใน <select>) ให้เป็น nexiiotDeviceId เพื่อเรียก /gql
-function toNxId(deviceDocId){
-  const meta = DEVICE_BY_ID[deviceDocId];
-  return meta ? nxIdOf(meta) : deviceDocId;
-}
+  let DEVICES = [];
+  let DEVICE_BY_ID = {};
 
-const LIFF_ID = '2008085765-YDwJrxy9';
-const FIREBASE_PROGRESS_URL = 'https://getprogress-iyipepekja-as.a.run.app'; // Cloud Run (ถ้า CORS ยังไม่เปิด ให้ใช้ proxy ใน Functions ตามที่สรุปด้านล่าง)
+  const docIdOf = (d) => d.deviceId || d.id || d.name;
+  const nxIdOf  = (d) => d.nexiiotDeviceId || d.deviceId || d.id;
+  function toNxId(deviceDocId){ const meta = DEVICE_BY_ID[deviceDocId]; return meta ? nxIdOf(meta) : deviceDocId; }
 
-/* === Cloud Functions Base === */
-const API_BASE = "https://asia-southeast1-finh-iot-ai.cloudfunctions.net";
-const isAbsUrl = (u) => /^https?:\/\//i.test(u);
-const toApiUrl = (u) => {
-  if (isAbsUrl(u)) return u;
-  if (u.startsWith('/tracking/')) u = u.slice('/tracking'.length);
-  return `${API_BASE}${u}`;
-};
+  const LIFF_ID = '2008085765-YDwJrxy9';
+  const API_BASE = "https://asia-southeast1-finh-iot-ai.cloudfunctions.net";
+  const isAbsUrl = (u) => /^https?:\/\//i.test(u);
+  const toApiUrl = (u) => { if (isAbsUrl(u)) return u; if (u.startsWith('/tracking/')) u = u.slice('/tracking'.length); return `${API_BASE}${u}`; };
 
-/* ========== DOM helpers ========== */
-const $ = (id) => document.getElementById(id);
-const barFillDash = $('barFillDash');
-const pctTopDash = $('pctTopDash');
-const growthLevelDash = $('growthLevelDash');
+  /* DOM */
+  const $ = (id) => document.getElementById(id);
+  const barFillDash = $('barFillDash');
+  const pctTopDash = $('pctTopDash');
+  const growthLevelDash = $('growthLevelDash');
 
-/* ========== Utils ========== */
-function showError(err){ console.error(err); }
-function normalizeLevel(lvl){
-  if (typeof lvl === 'number') return ['1','2','3','4'][Math.max(0, Math.min(3, lvl))] || String(lvl);
-  if (typeof lvl === 'string' && /^\d+$/.test(lvl)) { const n = parseInt(lvl,10); return ['1','2','3','4'][Math.max(0, Math.min(3, n))] || lvl; }
-  if (String(lvl).toLowerCase().includes('ready')) return '4';
-  return String(lvl || '-');
-}
-function getNum(obj, keys){
-  const all = Object.keys(obj || {}), canon = s => String(s||'').toLowerCase();
-  for (const k of all){ const ck = canon(k); if (keys.some(q => ck.includes(canon(q)))){ const v = Number(obj[k]); if (!Number.isNaN(v)) return v; } }
-  for (const k of all){ if (obj[k] && typeof obj[k] === 'object'){ const v = getNum(obj[k], keys); if (typeof v === 'number') return v; } }
-  return null;
-}
-
-/* ========== LINE Auth ========== */
-function stripRedirectUri(){ return location.origin + location.pathname; }
-async function ensureLogin(){
-  if (liff.isLoggedIn()) return;
-  const redirectUri = stripRedirectUri();
-  if (liff.isInClient()) liff.login();
-  else liff.login({ withLoginOnExternalBrowser:true, redirectUri });
-  return new Promise(()=>{});
-}
-
-function getStableUid(){
-  let uid = localStorage.getItem('finh_uid');
-  if (uid) return uid;
-  try {
-    const d = liff.getDecodedIDToken?.();
-    uid = d?.sub || d?.amr?.[0];
-  } catch {}
-  if (!uid) uid = 'dev-user';
-  localStorage.setItem('finh_uid', uid);
-  return uid;
-}
-function buildAuthHeaders(){
-  const h = { 'Content-Type':'application/json' };
-  const idToken = sessionStorage.getItem('line_id_token') || liff.getIDToken();
-  const access  = sessionStorage.getItem('line_access_token') || liff.getAccessToken();
-  if (idToken && idToken.includes('.')) h['x-line-id-token'] = idToken;
-  else if (access) h['x-line-access-token'] = access;
-  h['x-dev-uid'] = getStableUid();  // << คงที่
-  return h;
-}
-
-/* ========== fetch helpers (หนึ่งชุด | global) ========== */
-const FORCE_SETUP = new URLSearchParams(location.search).get('setup') === '1';
-
-async function authedGet(url) {
-  const r = await fetch(toApiUrl(url), { headers: buildAuthHeaders() });
-  const t = await r.text();
-  let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
-  if (!r.ok || j.error) throw new Error(j.error || t);
-  return j;
-}
-
-async function listDevices(){
-  const resp = await authedGet('/devices');  // proxy ผ่าน Functions กัน CORS
-  return Array.isArray(resp?.devices) ? resp.devices : [];
-}
-
-async function authedPost(url, body) {
-  const r = await fetch(toApiUrl(url), {
-    method: 'POST',
-    headers: buildAuthHeaders(),
-    body: JSON.stringify(body || {})
-  });
-  const t = await r.text();
-  let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
-  if (!r.ok || j.errors || j.error) {
-    throw new Error(j.errors ? JSON.stringify(j.errors) : (j.error || t));
+  /* Utils */
+  function showError(err){ console.error(err); }
+  function normalizeLevel(lvl){
+    if (typeof lvl === 'number') return ['1','2','3','4'][Math.max(0, Math.min(3, lvl))] || String(lvl);
+    if (typeof lvl === 'string' && /^\d+$/.test(lvl)) { const n = parseInt(lvl,10); return ['1','2','3','4'][Math.max(0, Math.min(3, n))] || lvl; }
+    if (String(lvl).toLowerCase().includes('ready')) return '4';
+    return String(lvl || '-');
   }
-  return j;
-}
-window.authedGet = authedGet;
-window.authedPost = authedPost;
+  function getNum(obj, keys){
+    const all = Object.keys(obj || {}), canon = s => String(s||'').toLowerCase();
+    for (const k of all){ const ck = canon(k); if (keys.some(q => ck.includes(canon(q)))){ const v = Number(obj[k]); if (!Number.isNaN(v)) return v; } }
+    for (const k of all){ if (obj[k] && typeof obj[k] === 'object'){ const v = getNum(obj[k], keys); if (typeof v === 'number') return v; } }
+    return null;
+  }
 
-/* ========== Progress & Shadow ========== */
-async function getProgress(docId){
-  const sel = document.getElementById('deviceSelect');
-  const id = docId || (sel && sel.value) || localStorage.getItem('deviceId');
-  if (!id) throw new Error('no device id selected');
-  return authedGet(`/getProgress?deviceId=${encodeURIComponent(id)}`);
-}
+  /* LINE Auth */
+  const FORCE_SETUP = new URLSearchParams(location.search).get('setup') === '1';
+  function stripRedirectUri(){ return location.origin + location.pathname; }
+  async function ensureLogin(){
+    if (liff.isLoggedIn()) return;
+    const redirectUri = stripRedirectUri();
+    if (liff.isInClient()) liff.login();
+    else liff.login({ withLoginOnExternalBrowser:true, redirectUri });
+    return new Promise(()=>{});
+  }
+  function getStableUid(){
+    let uid = localStorage.getItem('finh_uid');
+    if (uid) return uid;
+    try {
+      const d = liff.getDecodedIDToken?.();
+      uid = d?.sub || d?.amr?.[0];
+    } catch {}
+    if (!uid) uid = 'dev-user';
+    localStorage.setItem('finh_uid', uid);
+    return uid;
+  }
+  function buildAuthHeaders(){
+    const h = { 'Content-Type':'application/json' };
+    const idToken = sessionStorage.getItem('line_id_token') || liff.getIDToken();
+    const access  = sessionStorage.getItem('line_access_token') || liff.getAccessToken();
+    if (idToken && idToken.includes('.')) h['x-line-id-token'] = idToken;
+    else if (access) h['x-line-access-token'] = access;
+    h['x-dev-uid'] = getStableUid();
+    return h;
+  }
 
-async function getDiagValues(docId){
-  const st = await authedGet('/diagPollStatus');
-  return st?.perDevice?.[docId]?.values || null;
-}
+  /* fetch helpers */
+  async function authedGet(url) {
+    const r = await fetch(toApiUrl(url), { headers: buildAuthHeaders() });
+    const t = await r.text();
+    let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
+    if (!r.ok || j.error) throw new Error(j.error || t);
+    return j;
+  }
+  async function authedPost(url, body) {
+    const r = await fetch(toApiUrl(url), {
+      method: 'POST',
+      headers: buildAuthHeaders(),
+      body: JSON.stringify(body || {})
+    });
+    const t = await r.text();
+    let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
+    if (!r.ok || j.errors || j.error) throw new Error(j.errors ? JSON.stringify(j.errors) : (j.error || t));
+    return j;
+  }
+  window.authedGet = authedGet;
+  window.authedPost = authedPost;
 
-async function loadProgress(docId){
-  const prog = await getProgress(docId);
-  const pct = typeof prog.percent === 'number' ? Math.max(0, Math.min(100, prog.percent)) : null;
-  const lvl = normalizeLevel(prog.level); 
-  if (pctTopDash) pctTopDash.textContent = pct!=null ? pct.toFixed(1) : '—';
-  if (barFillDash) barFillDash.style.width = pct!=null ? `${pct}%` : '0%';
-  if (growthLevelDash) growthLevelDash.textContent = lvl;
+  async function listDevices(){
+    const resp = await authedGet('/devices');  // proxy ผ่าน Functions กัน CORS
+    return Array.isArray(resp?.devices) ? resp.devices : [];
+  }
 
-  return prog;
-}
-
-/* ใช้ GraphQL ผ่าน proxy ใน Functions (กัน CORS) */
-async function loadShadow(deviceDocId){
-  const nxId = toNxId(deviceDocId);
-  const Q = 'query($deviceid:String!){ shadow(deviceid:$deviceid){ data } }';
-  const r = await authedPost('/gql', { query: Q, variables: { deviceid: nxId }});
-  const data = r?.data?.shadow?.data || {};
-  const ph   = getNum(data, ['soil_ph','pH','ph']);
-  const temp = getNum(data, ['temp','temperature','temp_c']);
-  updateSeries(deviceDocId, typeof ph==='number'?ph:null, typeof temp==='number'?temp:null);
-  drawSpark(deviceDocId);
-  return { data, ph, temp };
-}
-
-async function renderDkpiForDevice(deviceDocId){
-  let raw = null, src = 'none';
-
-  // 1) ลองจาก GraphQL ก่อน (ใช้ nexiiotDeviceId)
-  try {
+  /* Progress & Shadow */
+  async function getProgress(docId){
+    const sel = document.getElementById('deviceSelect');
+    const id = docId || (sel && sel.value) || localStorage.getItem('deviceId');
+    if (!id) throw new Error('no device id selected');
+    return authedGet(`/getProgress?deviceId=${encodeURIComponent(id)}`);
+  }
+  async function getDiagValues(docId){
+    const st = await authedGet('/diagPollStatus');
+    return st?.perDevice?.[docId]?.values || null;
+  }
+  async function loadProgress(docId){
+    const prog = await getProgress(docId);
+    const pct = typeof prog.percent === 'number' ? Math.max(0, Math.min(100, prog.percent)) : null;
+    const lvl = normalizeLevel(prog.level);
+    if (pctTopDash) pctTopDash.textContent = pct!=null ? pct.toFixed(1) : '—';
+    if (barFillDash) barFillDash.style.width = pct!=null ? `${pct}%` : '0%';
+    if (growthLevelDash) growthLevelDash.textContent = lvl;
+    return prog;
+  }
+  async function loadShadow(deviceDocId){
     const nxId = toNxId(deviceDocId);
     const Q = 'query($deviceid:String!){ shadow(deviceid:$deviceid){ data } }';
     const r = await authedPost('/gql', { query: Q, variables: { deviceid: nxId }});
-    raw = r?.data?.shadow?.data || null;
-    if (raw) src = 'gql';
-  } catch {}
-
-  // 2) ถ้ากรุงไม่มา ลอง /getProgress (คีย์เป็น docId)
-  if (!raw) {
+    const data = r?.data?.shadow?.data || {};
+    const ph   = getNum(data, ['soil_ph','pH','ph']);
+    const temp = getNum(data, ['temp','temperature','temp_c']);
+    updateSeries(deviceDocId, typeof ph==='number'?ph:null, typeof temp==='number'?temp:null);
+    drawSpark(deviceDocId);
+    return { data, ph, temp };
+  }
+  async function renderDkpiForDevice(deviceDocId){
+    let raw = null, src = 'none';
     try {
-      const prog = await getProgress(deviceDocId);
-      raw = prog?.values || null;
-      if (raw) src = 'progress';
+      const nxId = toNxId(deviceDocId);
+      const Q = 'query($deviceid:String!){ shadow(deviceid:$deviceid){ data } }';
+      const r = await authedPost('/gql', { query: Q, variables: { deviceid: nxId }});
+      raw = r?.data?.shadow?.data || null;
+      if (raw) src = 'gql';
     } catch {}
-  }
-
-  // 3) ถ้ายังไม่ได้ ให้ fallback สุดท้ายจาก /diagPollStatus
-  if (!raw) {
-    try {
-      raw = await getDiagValues(deviceDocId);
-      if (raw) src = 'diag';
-    } catch {}
-  }
-
-  // สกัดค่า KPI
-  const { water, ph, temp } = extractKpis(raw || {});
-  document.getElementById('dkpi-water').textContent = formatWater(water);
-  document.getElementById('dkpi-ph').textContent    = formatPh(ph);
-  document.getElementById('dkpi-temp').textContent  = formatTemp(temp);
-
-  // กราฟ spark
-  updateSeries(deviceDocId, (typeof ph==='number'?ph:null), (typeof temp==='number'?temp:null));
-  drawSpark(deviceDocId);
-
-  // จำ device
-  localStorage.setItem('deviceId', deviceDocId);
-
-  // debug ช่วยเช็คเร็ว ๆ
-  console.debug('[KPI]', {docId: deviceDocId, src, keys: raw ? Object.keys(raw).slice(0,6) : []});
-}
-
-/* ========== Google Maps: รอให้พร้อมก่อนค่อย init ========== */
-window.__gmapsReady = () => window.dispatchEvent(new Event('gmaps-ready'));
-function waitForMapsReady(){
-  return new Promise((resolve, reject)=>{
-    if (window.google?.maps) return resolve(true);
-    const onReady = ()=>{ window.removeEventListener('gmaps-ready', onReady); resolve(true); };
-    window.addEventListener('gmaps-ready', onReady);
-    setTimeout(()=> reject(new Error('Google Maps failed to load')), 15000);
-  });
-}
-
-let currentFarm = null, gmap, gmarker, places;
-function initMapOnce(){
-  if (gmap) return;
-  const el = document.getElementById('map');
-  gmap = new google.maps.Map(el, { center:{lat:13.736,lng:100.523}, zoom:6 });
-  gmarker = new google.maps.Marker({ map:gmap, draggable:true });
-
-  const latEl = document.getElementById('lat'), lngEl = document.getElementById('lng');
-  const setLL = (lat,lng) => { gmarker.setPosition({lat,lng}); gmap.panTo({lat,lng}); latEl.value=lat.toFixed(6); lngEl.value=lng.toFixed(6); };
-  gmap.addListener('click', (e)=> setLL(e.latLng.lat(), e.latLng.lng()));
-
-  places = new google.maps.places.Autocomplete(document.getElementById('placeSearch'));
-  places.addListener('place_changed', ()=>{ const p = places.getPlace(); const ll = p.geometry?.location; if (ll) setLL(ll.lat(), ll.lng()); });
-
-  if (navigator.geolocation) navigator.geolocation.getCurrentPosition(pos=> setLL(pos.coords.latitude, pos.coords.longitude));
-}
-
-function initMapOnce(){
-  if (gmap) return;
-  const el = document.getElementById('map');
-  gmap = new google.maps.Map(el, { center:{lat:13.736,lng:100.523}, zoom:6 });
-  gmarker = new google.maps.Marker({ map:gmap, draggable:true });
-
-  const latEl = document.getElementById('lat'), lngEl = document.getElementById('lng');
-  const setLL = (lat,lng) => { 
-    gmarker.setPosition({lat,lng});
-    gmap.panTo({lat,lng});
-    latEl.value = lat.toFixed(6);
-    lngEl.value = lng.toFixed(6);
-  };
-
-  // ✅ ตั้งค่าดีฟอลต์ทันที (กรุงเทพ)
-  setLL(13.736, 100.523);
-
-  gmap.addListener('click', (e)=> setLL(e.latLng.lat(), e.latLng.lng()));
-
-  places = new google.maps.places.Autocomplete(document.getElementById('placeSearch'));
-  places.addListener('place_changed', ()=>{
-    const p = places.getPlace();
-    const ll = p.geometry?.location;
-    if (ll) setLL(ll.lat(), ll.lng());
-  });
-
-  if (navigator.geolocation){
-    navigator.geolocation.getCurrentPosition(pos => setLL(pos.coords.latitude, pos.coords.longitude));
-  }
-}
-
-/* ========== Formatters (DKPI) ========== */
-const formatPh   = p => (p==null || Number.isNaN(+p)) ? '—' : `${(+p).toFixed(1)} pH`;
-const formatTemp = t => (t==null || Number.isNaN(+t)) ? '—' : `${(+t).toFixed(1)}°C`;
-function formatWater(w){
-  if (w==null || Number.isNaN(+w)) return '—';
-  const n = +w; if (n <= 1) return `${Math.round(n*100)}%`; if (n <= 100) return `${Math.round(n)}%`; return String(n);
-}
-
-function _flattenValues(raw){
-  // รองรับทั้ง shape: data.values, progress.perDevice[deviceId].values, หรือแบนอยู่แล้ว
-  const base = raw?.values && typeof raw.values==='object' ? raw.values : raw;
-  const out = {};
-  (function walk(obj){
-    Object.keys(obj||{}).forEach(k=>{
-      const v = obj[k];
-      if (v && typeof v === 'object' && !Array.isArray(v)) { walk(v); }
-      else { out[String(k).toLowerCase()] = v; }
-    });
-  })(base||{});
-  return out;
-}
-
-// เลือกคีย์: exact ก่อน, ถ้าไม่เจอค่อย contains
-function _pickNumber(map, exactKeys=[], containsKeys=[]){
-  // exact
-  for (const key of exactKeys){
-    const v = map[key];
-    const n = Number(v);
-    if (!Number.isNaN(n)) return n;
-  }
-  // contains
-  outer: for (const k in map){
-    const lk = k.toLowerCase();
-    for (const p of containsKeys){
-      if (lk.includes(p)){
-        const n = Number(map[k]);
-        if (!Number.isNaN(n)) return n;
-        continue outer;
-      }
+    if (!raw) {
+      try {
+        const prog = await getProgress(deviceDocId);
+        raw = prog?.values || null;
+        if (raw) src = 'progress';
+      } catch {}
     }
-  }
-  return null;
-}
-
-// ---- KPI extract helpers ----
-function extractKpis(raw){
-  const m = _flattenValues(raw);
-
-  // pH: เน้น water_ph > soil_ph > ph (และกรองค่าที่หลุดช่วง 0–14 ทิ้ง)
-  let ph = _pickNumber(
-    m,
-    ['water_ph','soil_ph','ph'],     // exact first
-    ['_ph']                          // any key that contains '_ph'
-  );
-  if (ph != null && (ph <= 0.1 || ph > 14)) ph = null;
-
-  // Temp: เอาอุณหภูมิน้ำก่อน แล้วทั่วไป
-let temp = _pickNumber(
-  m,
-  ['water_ec_temp','water_temp','temperature_in','temp_out','weather_temperature','soil_temperature'],
-  ['temp','temperature','_temp']
-);
-
-  // Water: ระดับน้ำ/ความชื้น/ตัวชี้วัดที่เป็น % ก่อน
-  let water = _pickNumber(
-    m,
-    ['water_percent','water_pct','wl','water_level','level','soil_moisture'],
-    ['water_ec']                     // สุดท้ายอนุโลม EC
-  );
-  if (water != null){
-    // ทำให้แสดงเป็น % สมเหตุสมผล
-    if (water <= 1) water = water * 100;      // 0..1 -> 0..100%
-    // ถ้าเกิน 100 มาก ๆ ปล่อยเป็นค่าดิบ (ไม่บังคับ)
+    if (!raw) {
+      try {
+        raw = await getDiagValues(deviceDocId);
+        if (raw) src = 'diag';
+      } catch {}
+    }
+    const { water, ph, temp } = extractKpis(raw || {});
+    document.getElementById('dkpi-water').textContent = formatWater(water);
+    document.getElementById('dkpi-ph').textContent    = formatPh(ph);
+    document.getElementById('dkpi-temp').textContent  = formatTemp(temp);
+    updateSeries(deviceDocId, (typeof ph==='number'?ph:null), (typeof temp==='number'?temp:null));
+    drawSpark(deviceDocId);
+    localStorage.setItem('deviceId', deviceDocId);
+    console.debug('[KPI]', {docId: deviceDocId, src, keys: raw ? Object.keys(raw).slice(0,6) : []});
   }
 
-  return { water, ph, temp };
-}
-
-/* ========== Sparkline (pH & Temp) ========== */
-const SERIES_MAX = 120;
-function seriesKey(deviceId){ return 'series_' + deviceId; }
-function loadSeries(deviceId){ try{ return JSON.parse(localStorage.getItem(seriesKey(deviceId))) || {t:[],ph:[],temp:[]}; }catch{ return {t:[],ph:[],temp:[]}; } }
-function saveSeries(deviceId, s){ localStorage.setItem(seriesKey(deviceId), JSON.stringify(s)); }
-function updateSeries(deviceId, ph, temp){
-  if (!deviceId || (ph==null && temp==null)) return;
-  const s = loadSeries(deviceId); const now = Date.now();
-  if (s.t.length && now - s.t[s.t.length-1] < 50*1000){
-    if (typeof ph==='number') s.ph[s.ph.length-1] = ph;
-    if (typeof temp==='number') s.temp[s.temp.length-1] = temp;
-  }else{
-    s.t.push(now); s.ph.push(typeof ph==='number'?ph:null); s.temp.push(typeof temp==='number'?temp:null);
+  /* Google Maps (พร้อมค่าเริ่มต้น) */
+  function waitForMapsReady(){
+    return new Promise((resolve, reject)=>{
+      if (window.google?.maps) return resolve(true);
+      const onReady = ()=>{ window.removeEventListener('gmaps-ready', onReady); resolve(true); };
+      window.addEventListener('gmaps-ready', onReady);
+      setTimeout(()=> reject(new Error('Google Maps failed to load')), 15000);
+    });
   }
-  while (s.t.length > SERIES_MAX){ s.t.shift(); s.ph.shift(); s.temp.shift(); }
-  saveSeries(deviceId, s);
-}
-function drawSpark(deviceId){
-  const c = document.getElementById('spark'); if (!c) return;
-  const rect = c.getBoundingClientRect();
-  const cssW = Math.max(1, Math.floor(rect.width));
-  const cssH = Math.max(1, Math.floor(rect.height));
-  const dpr  = Math.max(1, Math.floor(window.devicePixelRatio || 1));
-  if (c.width!==cssW*dpr) c.width = cssW*dpr;
-  if (c.height!==cssH*dpr) c.height = cssH*dpr;
-
-  const ctx = c.getContext('2d');
-  ctx.setTransform(1,0,0,1,0,0); ctx.scale(dpr,dpr); ctx.clearRect(0,0,cssW,cssH);
-
-  const s = loadSeries(deviceId); const n = s.t.length; if (!n) return;
-  const pad = {l:40,r:10,t:18,b:24}, iw = cssW-pad.l-pad.r, ih = cssH-pad.t-pad.b;
-  const clamp = (v,lo,hi)=>Math.min(hi,Math.max(lo,v));
-  const phVals = s.ph.filter(v=>typeof v==='number');
-  let phMin = phVals.length?Math.min(...phVals):7, phMax = phVals.length?Math.max(...phVals):7;
-  if (phMax===phMin){ phMax+=.1; phMin-=.1; }
-  const phPad=(phMax-phMin)*.15+.1; phMin=clamp(phMin-phPad,0,14); phMax=clamp(phMax+phPad,.1,14);
-  const tVals = s.temp.filter(v=>typeof v==='number');
-  let tMin = tVals.length?Math.min(...tVals):25, tMax = tVals.length?Math.max(...tVals):25;
-  if (tMax===tMin){ tMax+=.5; tMin-=.5; }
-  const tPad=(tMax-tMin)*.15+.5; tMin=Math.max(0,tMin-tPad); tMax=tMax+tPad;
-  const xAt=i=>pad.l+(i/Math.max(1,n-1))*iw, yAt=(v,min,max)=>pad.t+(1-((clamp(v,min,max)-min)/(max-min)))*ih;
-
-  const grid='#e5efe933'; const lbl='#ffffffbf'; const phColor='#34d399', tColor='#60a5fa';
-  const ctxLine=(arr,min,max,color)=>{ const ctx2=ctx; ctx2.strokeStyle=color; ctx2.lineWidth=2; ctx2.beginPath(); let moved=false;
-    for(let i=0;i<n;i++){ const v=arr[i]; if(typeof v!=='number') continue; const x=xAt(i), y=yAt(v,min,max); if(!moved){ctx2.moveTo(x,y); moved=true;} else ctx2.lineTo(x,y); }
-    if(moved) ctx2.stroke();
-  };
-  ctx.strokeStyle=grid; ctx.lineWidth=1;
-  for(let g=0; g<=4; g++){ const y=pad.t+g*(ih/4); ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+iw,y); ctx.stroke(); }
-  ctxLine(s.ph, phMin, phMax, phColor);
-  ctxLine(s.temp, tMin, tMax, tColor);
-  ctx.fillStyle=lbl; ctx.font='12px system-ui,-apple-system,Segoe UI,Roboto';
-  ctx.textAlign='left';  ctx.fillText(`pH ${phMin.toFixed(1)}–${phMax.toFixed(1)}`, pad.l, pad.t-4);
-  ctx.textAlign='right'; ctx.fillText(`Temp ${Math.round(tMin)}–${Math.round(tMax)}°C`, pad.l+iw, pad.t-4);
-}
-
-/* ========== Farm onboarding (ครั้งเดียว) ========== */
-async function getMyFarm(){
-  try {
-    const r = await authedGet('/tracking/myFarm');
-    const f = r?.farm || null;
-    if (f && !f.id) f.id = r?.farmId || r?.id || f?.farmId || null;
-    if (f?.id) localStorage.setItem('finh_farm_id', f.id);
-    return f;                  // ✅ ไม่มีการ fallback ไปใช้ cache
-  } catch {
-    return null;               // ✅ error ก็ถือว่ายังไม่รู้จักฟาร์ม → ให้เปิดโมดัล
-  }
-}
-
-async function ensureFarmOnce(){
-  // ถ้ามีฟาร์มจากเซิร์ฟเวอร์และไม่ได้บังคับ setup -> ข้ามได้
-  const fromServer = await getMyFarm();
-  if (fromServer && !FORCE_SETUP){ 
-    currentFarm = fromServer; 
-    return true; 
+  let currentFarm = null, gmap, gmarker, places;
+  function initMapOnce(){
+    if (gmap) return;
+    const el = document.getElementById('map');
+    gmap = new google.maps.Map(el, { center:{lat:13.736,lng:100.523}, zoom:6 });
+    gmarker = new google.maps.Marker({ map:gmap, draggable:true });
+    const latEl = document.getElementById('lat'), lngEl = document.getElementById('lng');
+    const setLL = (lat,lng) => { gmarker.setPosition({lat,lng}); gmap.panTo({lat,lng}); latEl.value = lat.toFixed(6); lngEl.value = lng.toFixed(6); };
+    setLL(13.736, 100.523); // default BKK
+    gmap.addListener('click', (e)=> setLL(e.latLng.lat(), e.latLng.lng()));
+    places = new google.maps.places.Autocomplete(document.getElementById('placeSearch'));
+    places.addListener('place_changed', ()=>{ const p = places.getPlace(); const ll = p.geometry?.location; if (ll) setLL(ll.lat(), ll.lng()); });
+    if (navigator.geolocation){ navigator.geolocation.getCurrentPosition(pos => setLL(pos.coords.latitude, pos.coords.longitude)); }
   }
 
-  // ✅ ไม่มีฟาร์ม (หรือถูกบังคับ setup) -> เปิดโมดัลแน่ๆ
-  await waitForMapsReady(); 
-  initMapOnce();
-  const modal = document.getElementById('farmModal');
-  modal.hidden = false;
-
-  return await new Promise((resolve)=>{
-    document.getElementById('saveFarm').onclick = async ()=>{
-      const name = (document.getElementById('farmName')?.value || '').trim();
-      const lat  = Number((document.getElementById('lat')?.value || '').trim());
-      const lng  = Number((document.getElementById('lng')?.value || '').trim());
-      const address = (document.getElementById('placeSearch')?.value || '').trim() || null;
-
-      if (!name || Number.isNaN(lat) || Number.isNaN(lng)) {
-        alert('กรอกชื่อฟาร์มและตำแหน่งให้ครบ (lat/lng ต้องเป็นตัวเลข)');
-        return;
-      }
-      try{
-        const created = await authedPost('/tracking/createOrJoinFarm', { name, lat, lng, address });
-        const newId = created?.farmId || created?.farm?.id;
-        if (newId) localStorage.setItem('finh_farm_id', newId);
-        currentFarm = created?.farm || { id: newId, name, location: { lat, lng, address } };
-
-        // sync จากเซิร์ฟเวอร์อีกรอบ
-        const fromServer2 = await getMyFarm();
-        if (fromServer2) currentFarm = fromServer2;
-
-        modal.hidden = true;
-        resolve(true);
-      }catch(e){ console.error(e); alert(`createOrJoinFarm failed:\n${e?.message || e}`); }
+  /* Formatters & Sparkline (เหมือนเดิม) */
+  const formatPh   = p => (p==null || Number.isNaN(+p)) ? '—' : `${(+p).toFixed(1)} pH`;
+  const formatTemp = t => (t==null || Number.isNaN(+t)) ? '—' : `${(+t).toFixed(1)}°C`;
+  function formatWater(w){ if (w==null || Number.isNaN(+w)) return '—'; const n = +w; if (n <= 1) return `${Math.round(n*100)}%`; if (n <= 100) return `${Math.round(n)}%`; return String(n); }
+  function _flattenValues(raw){ const base = raw?.values && typeof raw.values==='object' ? raw.values : raw; const out = {}; (function walk(obj){ Object.keys(obj||{}).forEach(k=>{ const v = obj[k]; if (v && typeof v === 'object' && !Array.isArray(v)) { walk(v); } else { out[String(k).toLowerCase()] = v; } }); })(base||{}); return out; }
+  function _pickNumber(map, exactKeys=[], containsKeys=[]){ for (const key of exactKeys){ const v = map[key]; const n = Number(v); if (!Number.isNaN(n)) return n; } outer: for (const k in map){ const lk = k.toLowerCase(); for (const p of containsKeys){ if (lk.includes(p)){ const n = Number(map[k]); if (!Number.isNaN(n)) return n; continue outer; } } } return null; }
+  function extractKpis(raw){
+    const m = _flattenValues(raw);
+    let ph = _pickNumber(m, ['water_ph','soil_ph','ph'], ['_ph']); if (ph != null && (ph <= 0.1 || ph > 14)) ph = null;
+    let temp = _pickNumber(m, ['water_ec_temp','water_temp','temperature_in','temp_out','weather_temperature','soil_temperature'], ['temp','temperature','_temp']);
+    let water = _pickNumber(m, ['water_percent','water_pct','wl','water_level','level','soil_moisture'], ['water_ec']);
+    if (water != null && water <= 1) water = water * 100;
+    return { water, ph, temp };
+  }
+  const SERIES_MAX = 120;
+  function seriesKey(deviceId){ return 'series_' + deviceId; }
+  function loadSeries(deviceId){ try{ return JSON.parse(localStorage.getItem(seriesKey(deviceId))) || {t:[],ph:[],temp:[]}; }catch{ return {t:[],ph:[],temp:[]}; } }
+  function saveSeries(deviceId, s){ localStorage.setItem(seriesKey(deviceId), JSON.stringify(s)); }
+  function updateSeries(deviceId, ph, temp){
+    if (!deviceId || (ph==null && temp==null)) return;
+    const s = loadSeries(deviceId); const now = Date.now();
+    if (s.t.length && now - s.t[s.t.length-1] < 50*1000){
+      if (typeof ph==='number') s.ph[s.ph.length-1] = ph;
+      if (typeof temp==='number') s.temp[s.temp.length-1] = temp;
+    }else{
+      s.t.push(now); s.ph.push(typeof ph==='number'?ph:null); s.temp.push(typeof temp==='number'?temp:null);
+    }
+    while (s.t.length > SERIES_MAX){ s.t.shift(); s.ph.shift(); s.temp.shift(); }
+    saveSeries(deviceId, s);
+  }
+  function drawSpark(deviceId){
+    const c = document.getElementById('spark'); if (!c) return;
+    const rect = c.getBoundingClientRect();
+    const cssW = Math.max(1, Math.floor(rect.width));
+    const cssH = Math.max(1, Math.floor(rect.height));
+    const dpr  = Math.max(1, Math.floor(window.devicePixelRatio || 1));
+    if (c.width!==cssW*dpr) c.width = cssW*dpr;
+    if (c.height!==cssH*dpr) c.height = cssH*dpr;
+    const ctx = c.getContext('2d');
+    ctx.setTransform(1,0,0,1,0,0); ctx.scale(dpr,dpr); ctx.clearRect(0,0,cssW,cssH);
+    const s = loadSeries(deviceId); const n = s.t.length; if (!n) return;
+    const pad = {l:40,r:10,t:18,b:24}, iw = cssW-pad.l-pad.r, ih = cssH-pad.t-pad.b;
+    const clamp = (v,lo,hi)=>Math.min(hi,Math.max(lo,v));
+    const phVals = s.ph.filter(v=>typeof v==='number');
+    let phMin = phVals.length?Math.min(...phVals):7, phMax = phVals.length?Math.max(...phVals):7;
+    if (phMax===phMin){ phMax+=.1; phMin-=.1; }
+    const phPad=(phMax-phMin)*.15+.1; phMin=clamp(phMin-phPad,0,14); phMax=clamp(phMax+phPad,.1,14);
+    const tVals = s.temp.filter(v=>typeof v==='number');
+    let tMin = tVals.length?Math.min(...tVals):25, tMax = tVals.length?Math.max(...tVals):25;
+    if (tMax===tMin){ tMax+=.5; tMin-=.5; }
+    const tPad=(tMax-tMin)*.15+.5; tMin=Math.max(0,tMin-tPad); tMax=tMax+tPad;
+    const xAt=i=>pad.l+(i/Math.max(1,n-1))*iw, yAt=(v,min,max)=>pad.t+(1-((clamp(v,min,max)-min)/(max-min)))*ih;
+    const grid='#e5efe933'; const lbl='#ffffffbf'; const phColor='#34d399', tColor='#60a5fa';
+    const ctxLine=(arr,min,max,color)=>{ const ctx2=ctx; ctx2.strokeStyle=color; ctx2.lineWidth=2; ctx2.beginPath(); let moved=false;
+      for(let i=0;i<n;i++){ const v=arr[i]; if(typeof v!=='number') continue; const x=xAt(i), y=yAt(v,min,max); if(!moved){ctx2.moveTo(x,y); moved=true;} else ctx2.lineTo(x,y); }
+      if(moved) ctx2.stroke();
     };
-  });
-}
-
-/* ========== Harvest Tracking ========== */
-async function fetchHarvests(limit=50){
-  // รวบรวมทุกทางที่จะได้ farmId
-  let farmId = currentFarm?.id || localStorage.getItem('finh_farm_id');
-
-  if (!farmId) {
-    currentFarm = await getMyFarm();
-    farmId = currentFarm?.id || localStorage.getItem('finh_farm_id');
-  }
-  if (!farmId) {
-    // ยังไม่มีจริง ๆ → อย่าโยน error ให้คอนโซลล้น; คืนลิสต์ว่างแทน
-    return [];
+    ctx.strokeStyle=grid; ctx.lineWidth=1;
+    for(let g=0; g<=4; g++){ const y=pad.t+g*(ih/4); ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+iw,y); ctx.stroke(); }
+    ctxLine(s.ph, phMin, phMax, phColor);
+    ctxLine(s.temp, tMin, tMax, tColor);
+    ctx.fillStyle=lbl; ctx.font='12px system-ui,-apple-system,Segoe UI,Roboto';
+    ctx.textAlign='left';  ctx.fillText(`pH ${phMin.toFixed(1)}–${phMax.toFixed(1)}`, pad.l, pad.t-4);
+    ctx.textAlign='right'; ctx.fillText(`Temp ${Math.round(tMin)}–${Math.round(tMax)}°C`, pad.l+iw, pad.t-4);
   }
 
-  const url = `/tracking/harvests?farmId=${encodeURIComponent(farmId)}&limit=${limit}&includeLineage=1`;
-  const r = await authedGet(url);
-  return r?.items || [];
-}
+  /* Farm onboarding */
+  async function getMyFarm(){
+    try {
+      const r = await authedGet('/tracking/myFarm');
+      const f = r?.farm || null;
+      if (f && !f.id) f.id = r?.farmId || r?.id || f?.farmId || null;
+      if (f?.id) localStorage.setItem('finh_farm_id', f.id);
+      return f;
+    } catch { return null; }
+  }
 
-function fmtDate(ts){
-  if (!ts) return '—';
-  if (typeof ts === 'string') return ts.split('T')[0];
-  if (ts._seconds) return new Date(ts._seconds*1000).toISOString().split('T')[0];
-  return String(ts);
-}
-function fromSafe(v){ return v==null ? '—' : String(v); }
-function esc(s){ return String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
-function renderHarvestTable(data){
-  const tbody = document.querySelector('#harvestTable tbody'); if (!tbody) return;
-  tbody.innerHTML = '';
-  (data?.items||[]).forEach(item=>{
-    const tr = document.createElement('tr');
-    const from = item.from
-      ? `${fromSafe(item.from.pond)} / ${fromSafe(item.from.tray)} / ${Array.isArray(item.from.crops)?item.from.crops.join(', '):fromSafe(item.from.crop)}`
-      : '—';
-    tr.innerHTML = `
-      <td>${fmtDate(item.date)}</td>
-      <td>${esc(item.id||item.code||'')}</td>
-      <td>${item.weightKg!=null ? Number(item.weightKg).toFixed(2) : '—'}</td>
-      <td>${item.moisture!=null ? Number(item.moisture).toFixed(1) : '—'}</td>
-      <td>${esc(item.qcResult||'-')}</td>
-      <td>${esc(from)}</td>`;
-    tbody.appendChild(tr);
-  });
-}
-document.addEventListener('click', (e)=>{ if (e.target && e.target.id === 'reloadHarvest'){ fetchHarvests().then(renderHarvestTable).catch(console.error); } });
-async function refreshHarvestCard(){
-  try{
-    if (!currentFarm?.id) {
-      currentFarm = await getMyFarm();
-      if (!currentFarm?.id) return; // ยังไม่มีฟาร์ม → ไม่ต้องยิง
+  async function ensureFarmOnce(){
+    const fromServer = await getMyFarm();
+    if (fromServer && !FORCE_SETUP){ currentFarm = fromServer; return true; }
+
+    await waitForMapsReady();
+    initMapOnce();
+    const modal = document.getElementById('farmModal');
+    modal.hidden = false;
+
+    return await new Promise((resolve)=>{
+      document.getElementById('saveFarm').onclick = async ()=>{
+        const name = (document.getElementById('farmName')?.value || '').trim();
+        const lat  = parseFloat((document.getElementById('lat')?.value || '').trim());
+        const lng  = parseFloat((document.getElementById('lng')?.value || '').trim());
+        const address = (document.getElementById('placeSearch')?.value || '').trim() || null;
+        if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+          alert('กรอกชื่อฟาร์มและตำแหน่งให้ครบ (lat/lng ต้องเป็นตัวเลข)');
+          return;
+        }
+        const body = { name, lat, lng, address };
+        console.debug('[createOrJoinFarm] body', body);
+        try{
+          const created = await authedPost('/tracking/createOrJoinFarm', body);
+          const newId = created?.farmId || created?.farm?.id;
+          if (newId) localStorage.setItem('finh_farm_id', newId);
+          currentFarm = created?.farm || { id: newId, name, location: { lat, lng, address } };
+          const fromServer2 = await getMyFarm();
+          if (fromServer2) currentFarm = fromServer2;
+          modal.hidden = true;
+          resolve(true);
+        }catch(e){
+          console.error('[createOrJoinFarm] failed', e);
+          alert(`สร้างฟาร์มไม่สำเร็จ: ${e?.message || e}`);
+        }
+      };
+    });
+  }
+
+  /* Harvest Tracking */
+  async function fetchHarvests(limit=50){
+    let farmId = currentFarm?.id || localStorage.getItem('finh_farm_id');
+    if (!farmId){ currentFarm = await getMyFarm(); farmId = currentFarm?.id || localStorage.getItem('finh_farm_id'); }
+    if (!farmId) return [];
+    const url = `/tracking/harvests?farmId=${encodeURIComponent(farmId)}&limit=${limit}&includeLineage=1`;
+    return (await authedGet(url))?.items || [];
+  }
+  function fmtDate(ts){
+    if (!ts) return '—';
+    if (typeof ts === 'string') return ts.split('T')[0];
+    if (ts._seconds) return new Date(ts._seconds*1000).toISOString().split('T')[0];
+    return String(ts);
+  }
+  function fromSafe(v){ return v==null ? '—' : String(v); }
+  function esc(s){ return String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
+  function renderHarvestTable(data){
+    const tbody = document.querySelector('#harvestTable tbody'); if (!tbody) return;
+    tbody.innerHTML = '';
+    (data?.items||[]).forEach(item=>{
+      const tr = document.createElement('tr');
+      const from = item.from ? `${fromSafe(item.from.pond)} / ${fromSafe(item.from.tray)} / ${Array.isArray(item.from.crops)?item.from.crops.join(', '):fromSafe(item.from.crop)}` : '—';
+      tr.innerHTML = `
+        <td>${fmtDate(item.date)}</td>
+        <td>${esc(item.id||item.code||'')}</td>
+        <td>${item.weightKg!=null ? Number(item.weightKg).toFixed(2) : '—'}</td>
+        <td>${item.moisture!=null ? Number(item.moisture).toFixed(1) : '—'}</td>
+        <td>${esc(item.qcResult||'-')}</td>
+        <td>${esc(from)}</td>`;
+      tbody.appendChild(tr);
+    });
+  }
+  document.addEventListener('click', (e)=>{ if (e.target && e.target.id === 'reloadHarvest'){ fetchHarvests().then(d=>renderHarvestTable({items:d})).catch(console.error); } });
+  async function refreshHarvestCard(){ try{ if (!currentFarm?.id){ currentFarm = await getMyFarm(); if (!currentFarm?.id) return; } const items = await fetchHarvests(); renderHarvestTable({ items }); } catch(e){ console.error(e); } }
+
+  /* Boot */
+  window.addEventListener('DOMContentLoaded', async () => {
+    try {
+      await liff.init({ liffId: LIFF_ID });
+      await ensureLogin();
+      await ensureFarmOnce();
+
+      const qs = new URLSearchParams(location.search);
+      if (qs.get('code') || qs.get('liffRedirectUri')) history.replaceState({}, '', stripRedirectUri());
+
+      const idToken = liff.getIDToken(); const accessToken = liff.getAccessToken();
+      if (idToken) sessionStorage.setItem('line_id_token', idToken);
+      if (accessToken) sessionStorage.setItem('line_access_token', accessToken);
+
+      const sel = $('deviceSelect');
+
+      try {
+        DEVICES = await listDevices();
+        DEVICE_BY_ID = Object.fromEntries(DEVICES.map(d => [docIdOf(d), d]));
+      } catch (e) { showError(e); }
+
+      if (sel){
+        sel.innerHTML = '';
+        if (DEVICES.length === 0){
+          const op = document.createElement('option');
+          op.value=''; op.textContent='No device';
+          sel.appendChild(op);
+        } else {
+          DEVICES.forEach(d => {
+            const op = document.createElement('option');
+            op.value = docIdOf(d);
+            op.textContent = d.name || nxIdOf(d);
+            sel.appendChild(op);
+          });
+          const saved = localStorage.getItem('deviceId');
+          const hasSaved = saved && [...sel.options].some(o => o.value === saved);
+          sel.value = hasSaved ? saved : docIdOf(DEVICES[0]);
+          localStorage.setItem('deviceId', sel.value);
+        }
+      }
+
+      async function refreshAll(){
+        const sel = document.getElementById('deviceSelect');
+        const docId = (sel && sel.value) || localStorage.getItem('deviceId');
+        if (!docId) return;
+        await Promise.all([ renderDkpiForDevice(docId), loadProgress(docId) ]);
+        const dash = document.getElementById('dashboard');
+        if (dash) dash.hidden = false;
+        await refreshHarvestCard();
+      }
+
+      if (sel){
+        sel.onchange = async () => { localStorage.setItem('deviceId', sel.value); await refreshAll(); };
+      }
+      $('refreshBtn') && ($('refreshBtn').onclick = refreshAll);
+
+      await refreshAll();
+      setInterval(() => { const sel2 = document.getElementById('deviceSelect'); if (!sel2?.value) return; refreshAll().catch(showError); }, 60000);
+    } catch (e) {
+      showError(e);
     }
-    const items = await fetchHarvests();
-    renderHarvestTable({ items });
-  } catch(e){ console.error(e); }
-}
-
-/* ========== Boot ========== */
-window.addEventListener('DOMContentLoaded', async () => {
-  try{
-    await liff.init({ liffId: LIFF_ID });
-    await ensureLogin();
-    await ensureFarmOnce();
-
-    const qs = new URLSearchParams(location.search);
-    if (qs.get('code') || qs.get('liffRedirectUri')) history.replaceState({}, '', stripRedirectUri());
-
-    const idToken = liff.getIDToken(); const accessToken = liff.getAccessToken();
-    if (idToken) sessionStorage.setItem('line_id_token', idToken);
-    if (accessToken) sessionStorage.setItem('line_access_token', accessToken);
-
-    const sel = $('deviceSelect');
-
-try {
-  DEVICES = await listDevices();                   // โหลดรายการ
-  DEVICE_BY_ID = Object.fromEntries(DEVICES.map(d => [docIdOf(d), d])); // <-- สร้าง map docId -> meta
-} catch (e) { showError(e); }
-
-if (sel){
-  sel.innerHTML = '';
-  if (DEVICES.length === 0){
-    const op = document.createElement('option');
-    op.value=''; op.textContent='No device';
-    sel.appendChild(op);
-  } else {
-    DEVICES.forEach(d => {
-      const op = document.createElement('option');
-      op.value = docIdOf(d);                       // value = Firestore docId
-      op.textContent = d.name || nxIdOf(d);        // ชื่ออุปกรณ์ (แสดงผล)
-      sel.appendChild(op);
-    });
-    const saved = localStorage.getItem('deviceId');
-    const hasSaved = saved && [...sel.options].some(o => o.value === saved);
-    sel.value = hasSaved ? saved : docIdOf(DEVICES[0]);
-    localStorage.setItem('deviceId', sel.value);
-  }
-}
-
-try {
-  DEVICES = await listDevices();                   // โหลดรายการ
-  DEVICE_BY_ID = Object.fromEntries(DEVICES.map(d => [docIdOf(d), d])); // <-- สร้าง map
-} catch (e) { showError(e); }
-
-if (sel){
-  sel.innerHTML = '';
-  if (DEVICES.length === 0){
-    const op = document.createElement('option');
-    op.value=''; op.textContent='No device';
-    sel.appendChild(op);
-  } else {
-    DEVICES.forEach(d => {
-      const op = document.createElement('option');
-      op.value = docIdOf(d);                       // value = docId
-      op.textContent = d.name || nxIdOf(d);        // ชื่อแสดงผล
-      sel.appendChild(op);
-    });
-    const saved = localStorage.getItem('deviceId');
-    const hasSaved = saved && [...sel.options].some(o => o.value === saved);
-    sel.value = hasSaved ? saved : docIdOf(DEVICES[0]);
-    localStorage.setItem('deviceId', sel.value);
-  }
-}
-
-async function refreshAll(){
-  const sel = document.getElementById('deviceSelect');
-  const docId = (sel && sel.value) || localStorage.getItem('deviceId');
-  if (!docId) return; // ยังไม่ได้เลือกอุปกรณ์
-
-  // ไม่ต้องเรียก loadShadow ซ้ำ เพราะ renderDkpiForDevice จะไป /gql อยู่แล้ว
-  await Promise.all([
-    renderDkpiForDevice(docId),
-    loadProgress(docId),
-  ]);
-}
-
-const dash = document.getElementById('dashboard');
-if (dash) dash.hidden = false;
-
-if (sel){
-  sel.onchange = async () => {
-    localStorage.setItem('deviceId', sel.value);
-    await refreshAll();
-  };
-}
-
-$('refreshBtn') && ($('refreshBtn').onclick = refreshAll);
-
-// เรียกครั้งแรก + ตั้ง interval รีเฟรชเบา ๆ
-await refreshAll();
-setInterval(() => {
-  const sel2 = document.getElementById('deviceSelect');
-  if (!sel2?.value) return;
-  refreshAll().catch(showError);
-}, 60000);
-} catch (e) {
-  showError(e);
-}
-});
-})();
+  });
+})(); /* <<<<<< ปิด IIFE ให้ถูกต้อง */
 </script>
 
-<script>
-  // ใช้เป็น callback เมื่อสคริปต์ Maps โหลดเสร็จ
-  window.__gmapsReady = () => window.dispatchEvent(new Event('gmaps-ready'));
-</script>
-<script
-  async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA2Gx7cUFVTHVR65w371mqgkUCWNlO1SgY&libraries=places&loading=async&callback=__gmapsReady"
-  defer></script>
+<!-- callback เมื่อสคริปต์ Maps โหลดเสร็จ -->
+<script> window.__gmapsReady = () => window.dispatchEvent(new Event('gmaps-ready')); </script>
+<script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA2Gx7cUFVTHVR65w371mqgkUCWNlO1SgY&libraries=places&loading=async&callback=__gmapsReady"></script>
 </body>
-</html> 
+</html>
