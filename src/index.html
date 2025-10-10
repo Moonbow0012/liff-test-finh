@@ -236,6 +236,20 @@
   const nxIdOf  = (d) => d.nexiiotDeviceId || d.deviceId || d.id;
   function toNxId(deviceDocId){ const meta = DEVICE_BY_ID[deviceDocId]; return meta ? nxIdOf(meta) : deviceDocId; }
 
+  function prettyDeviceLabel(d, i){
+  const id = docIdOf(d);
+  const cand = [d.displayName, d.name, d.title, d.alias].find(s => s && String(s).trim()) || '';
+  const looksLikeId = (s) => {
+    const t = String(s||'').trim();
+    if (!t) return true;
+    if (t === id) return true;
+    if (t.length > 18) return true;
+    const hexish = t.replace(/-/g,'');
+    return /^[0-9a-f]{16,}$/i.test(hexish);
+  };
+  return looksLikeId(cand) ? `Device ${i+1}` : cand;
+}
+
   const LIFF_ID = '2008085765-YDwJrxy9';
   const API_BASE = "https://asia-southeast1-finh-iot-ai.cloudfunctions.net";
   const isAbsUrl = (u) => /^https?:\/\//i.test(u);
@@ -756,12 +770,11 @@ if (sel){
     sel.appendChild(op);
   } else {
     DEVICES.forEach((d, i) => {
-      const id = docIdOf(d);               // คงใช้ id เดิมเป็นค่า value
-      const label = d.name || d.title || `Device ${i+1}`;  // ← แสดงชื่อสั้น
+      const id = docIdOf(d);
       const op = document.createElement('option');
-      op.value = id;
-      op.textContent = label;
-      op.title = nxIdOf(d) || id;          // hover แล้วเห็นรหัสเต็ม
+      op.value = id;                              // ใช้ id จริงไว้ยิง API
+      op.textContent = prettyDeviceLabel(d, i);   // ← ป้ายสั้น (Device N)
+      op.title = d.name || d.title || nxIdOf(d) || id;  // hover เห็นรหัสเต็ม
       sel.appendChild(op);
     });
     const saved = localStorage.getItem('deviceId');
