@@ -376,33 +376,37 @@ function drawSpark(deviceId){
 
 /* ========== Farm onboarding (ครั้งเดียว) ========== */
 async function getMyFarm(){
-  try { const r = await authedGet('/tracking/myFarm'); return r?.farm || null; }
-  catch { return null; }
+  try {
+    const r = await authedGet('/tracking/myFarm');
+    const f = r?.farm || null;
+    if (!f) return null;
+    // เผื่อ backend ส่ง farmId แยก หรือ farm ไม่มี id
+    if (!f.id) {
+      f.id = r?.farmId || r?.id || f?.farmId || null;
+    }
+    if (f.id) localStorage.setItem('finh_farm_id', f.id);
+    return f;
+  } catch {
+    // fallback: ใช้ id ที่เคยเก็บไว้ใน localStorage หากมี
+    const cachedId = localStorage.getItem('finh_farm_id');
+    return cachedId ? { id: cachedId } : null;
+  }
 }
+
 async function ensureFarmOnce(){
   const fromServer = await getMyFarm();
-  const fromLocal  = localStorage.getItem('finh_onboarded') === '1';
-
-  // แก้ logic: อย่าตั้ง currentFarm = null โดยอัตโนมัติ
   if (fromServer){ currentFarm = fromServer; return true; }
-  if (fromLocal){ /* เคย onboard แล้ว แต่ server ยังว่าง → ให้ไปเปิด modal */ }
 
-  await waitForMapsReady();
-  initMapOnce();
+  await waitForMapsReady(); initMapOnce();
   const modal = document.getElementById('farmModal');
   modal.hidden = false;
 
   return await new Promise((resolve)=>{
     document.getElementById('saveFarm').onclick = async ()=>{
-      const nameEl = document.getElementById('farmName');
-      const latEl  = document.getElementById('lat');
-      const lngEl  = document.getElementById('lng');
-      const addrEl = document.getElementById('placeSearch');
-
-      const name = (nameEl?.value || '').trim();
-      const lat  = Number((latEl?.value || '').trim());
-      const lng  = Number((lngEl?.value || '').trim());
-      const address = (addrEl?.value || '').trim() || null;
+      const name = (document.getElementById('farmName')?.value || '').trim();
+      const lat  = Number((document.getElementById('lat')?.value || '').trim());
+      const lng  = Number((document.getElementById('lng')?.value || '').trim());
+      const address = (document.getElementById('placeSearch')?.value || '').trim() || null;
 
       if (!name || Number.isNaN(lat) || Number.isNaN(lng)) {
         alert('กรอกชื่อฟาร์มและตำแหน่งให้ครบ (lat/lng ต้องเป็นตัวเลข)');
@@ -410,15 +414,21 @@ async function ensureFarmOnce(){
       }
 
       try{
-        await authedPost('/tracking/createOrJoinFarm', { name, lat, lng, address });
-        localStorage.setItem('finh_onboarded', '1');
-        currentFarm = await getMyFarm();
+        const created = await authedPost('/tracking/createOrJoinFarm', { name, lat, lng, address });
+        // พยายามตั้ง currentFarm.id จากทุกช่องทางที่เป็นไปได้
+        const newId = created?.farmId || created?.farm?.id || localStorage.getItem('finh_farm_id');
+        currentFarm = created?.farm || { id: newId, name, location: { lat, lng, address } };
+        if (currentFarm?.id) localStorage.setItem('finh_farm_id', currentFarm.id);
+
+        // ดึงซ้ำจาก myFarm เพื่อความชัวร์
+        const fromServer2 = await getMyFarm();
+        if (fromServer2) currentFarm = fromServer2;
+
         modal.hidden = true;
         resolve(true);
       } catch(e) {
         console.error('createOrJoinFarm failed:', e);
-        const msg = (e && e.message) ? e.message : String(e);
-        alert(`createOrJoinFarm failed:\n${msg}`);
+        alert(`createOrJoinFarm failed:\n${e?.message || e}`);
       }
     };
   });
@@ -426,12 +436,23 @@ async function ensureFarmOnce(){
 
 /* ========== Harvest Tracking ========== */
 async function fetchHarvests(limit=50){
-  if (!currentFarm?.id) currentFarm = await getMyFarm();
-  if (!currentFarm?.id) throw new Error('missing farmId (ยังไม่มีฟาร์มสำหรับผู้ใช้นี้)');
-  const url = `/tracking/harvests?farmId=${encodeURIComponent(currentFarm.id)}&limit=${limit}&includeLineage=1`;
+  // รวบรวมทุกทางที่จะได้ farmId
+  let farmId = currentFarm?.id || localStorage.getItem('finh_farm_id');
+
+  if (!farmId) {
+    currentFarm = await getMyFarm();
+    farmId = currentFarm?.id || localStorage.getItem('finh_farm_id');
+  }
+  if (!farmId) {
+    // ยังไม่มีจริง ๆ → อย่าโยน error ให้คอนโซลล้น; คืนลิสต์ว่างแทน
+    return [];
+  }
+
+  const url = `/tracking/harvests?farmId=${encodeURIComponent(farmId)}&limit=${limit}&includeLineage=1`;
   const r = await authedGet(url);
   return r?.items || [];
 }
+
 function fmtDate(ts){
   if (!ts) return '—';
   if (typeof ts === 'string') return ts.split('T')[0];
@@ -459,7 +480,16 @@ function renderHarvestTable(data){
   });
 }
 document.addEventListener('click', (e)=>{ if (e.target && e.target.id === 'reloadHarvest'){ fetchHarvests().then(renderHarvestTable).catch(console.error); } });
-async function refreshHarvestCard(){ try{ const items = await fetchHarvests(); renderHarvestTable({ items }); } catch(e){ console.error(e); } }
+async function refreshHarvestCard(){
+  try{
+    if (!currentFarm?.id) {
+      currentFarm = await getMyFarm();
+      if (!currentFarm?.id) return; // ยังไม่มีฟาร์ม → ไม่ต้องยิง
+    }
+    const items = await fetchHarvests();
+    renderHarvestTable({ items });
+  } catch(e){ console.error(e); }
+}
 
 /* ========== Boot ========== */
 window.addEventListener('DOMContentLoaded', async () => {
