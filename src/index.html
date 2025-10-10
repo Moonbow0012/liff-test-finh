@@ -513,30 +513,27 @@ async function getMyFarm(){
   try {
     const r = await authedGet('/tracking/myFarm');
     const f = r?.farm || null;
-    if (!f) {
-      const cachedId = localStorage.getItem('finh_farm_id');
-      return cachedId ? { id: cachedId } : null;
-    }
-    if (!f.id) f.id = r?.farmId || r?.id || f?.farmId || null;
-    if (f.id) localStorage.setItem('finh_farm_id', f.id);
-    return f;
+    if (f && !f.id) f.id = r?.farmId || r?.id || f?.farmId || null;
+    if (f?.id) localStorage.setItem('finh_farm_id', f.id);
+    return f;                  // ✅ ไม่มีการ fallback ไปใช้ cache
   } catch {
-    const cachedId = localStorage.getItem('finh_farm_id');
-    return cachedId ? { id: cachedId } : null;
+    return null;               // ✅ error ก็ถือว่ายังไม่รู้จักฟาร์ม → ให้เปิดโมดัล
   }
 }
 
 async function ensureFarmOnce(){
   const fromServer = await getMyFarm();
   if (fromServer){ currentFarm = fromServer; return true; }
-
+  
   // fallback: ถ้ามี cache id แล้ว ให้ใช้ไปก่อนและไม่เปิด modal
   const cachedId = localStorage.getItem('finh_farm_id');
   if (cachedId){ currentFarm = { id: cachedId }; return true; }
 
-  await waitForMapsReady(); initMapOnce();
+  await waitForMapsReady(); 
+  initMapOnce();
   const modal = document.getElementById('farmModal');
-  modal.hidden = false;
+  modal.hidden = false;        // ✅ เซิร์ฟเวอร์บอกว่าไม่มีฟาร์ม → เปิดโมดัล
+  // (ส่วน Promise รอปุ่ม "บันทึก" ด้านล่างคงเดิม)
 
   return await new Promise((resolve)=>{
     document.getElementById('saveFarm').onclick = async ()=>{
