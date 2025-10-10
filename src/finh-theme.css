@@ -242,3 +242,64 @@ html,body{
 .tbl th, .tbl td{ padding:10px 12px; border-bottom:1px solid rgba(255,255,255,.13); text-align:left; }
 .tbl th{ font-weight:700; opacity:.9; }
 .tbl tbody tr:hover{ background:rgba(255,255,255,.04); }
+
+/* Harvest — head/toolbar/summary */
+.harv-head { display:flex; flex-direction:column; gap:8px; }
+.harv-head h3 { margin:0; }
+
+.harv-toolbar{
+  display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;
+}
+.harv-toolbar .filters{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.harv-toolbar .filters .sep{ opacity:.65; }
+.harv-toolbar input[type="date"],
+.harv-toolbar select,
+.harv-toolbar .search{
+  border:1px solid var(--finh-slate-200);
+  border-radius:10px; padding:6px 10px; background:#fff;
+}
+
+.harv-summary{
+  display:flex; gap:8px; flex-wrap:wrap; margin-top:2px;
+}
+.harv-summary .chip{
+  display:flex; gap:6px; align-items:baseline;
+  background:#f3faf6; border:1px solid #e6f3ea; border-radius:999px;
+  padding:6px 10px; font-size:12px;
+}
+.harv-summary .chip b{ font-size:16px; color:#0b3d23; }
+
+/* Harvest table */
+.harv-table th.sticky{
+  position:sticky; top:0; background:#ffffff; z-index:1;
+  border-bottom:1px solid var(--finh-slate-200);
+}
+.harv-table td.num, .harv-table th.num{ text-align:right; }
+
+/* QC badges */
+.qc{
+  display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; font-weight:700;
+  border:1px solid transparent;
+}
+.qc-pass{ color:#065f46; background:#d1fae5; border-color:#a7f3d0; }
+.qc-fail{ color:#7f1d1d; background:#fee2e2; border-color:#fecaca; }
+.qc-none{ color:#374151; background:#f3f4f6; border-color:#e5e7eb; }
+.qc-other{ color:#1f2937; background:#e0e7ff; border-color:#c7d2fe; }
+
+/* Empty & loading states */
+.table-wrap .empty{
+  padding:14px; text-align:center; color:#4b5563; border:1px dashed #d1d5db; border-radius:10px; margin-top:8px;
+}
+.table-wrap .loading{
+  display:flex; align-items:center; gap:8px; padding:12px; color:#0b3d23; font-weight:700;
+}
+.loading .dot{ width:6px; height:6px; background:#16a34a; border-radius:50%; display:inline-block; animation:bump 1s infinite ease-in-out; }
+.loading .dot:nth-child(2){ animation-delay:.15s } .loading .dot:nth-child(3){ animation-delay:.3s }
+@keyframes bump { 0%,80%,100%{ transform:scale(0); } 40%{ transform:scale(1); } }
+
+/* Responsive tweaks */
+@media (max-width: 640px){
+  .harv-toolbar{ gap:6px; }
+  .harv-toolbar .filters{ gap:6px; }
+  .harv-summary .chip{ padding:4px 8px; font-size:11px; }
+}

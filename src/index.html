@@ -98,29 +98,56 @@
         </ul>
       </div>
 
-      <div class="dash-card harvests">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <h3>Harvest Tracking</h3>
-          <button id="reloadHarvest" class="dash-btn">Reload</button>
-        </div>
-
-        <div class="table-wrap">
-          <table class="tbl" id="harvestTable">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Harvest</th>
-                <th>Weight (kg)</th>
-                <th>Moisture (%)</th>
-                <th>QC</th>
-              </tr>
-            </thead>
-            <tbody><!-- filled by JS --></tbody>
-          </table>
-        </div>
+<div class="dash-card harvests">
+  <div class="harv-head">
+    <h3>Harvest Tracking</h3>
+    <div class="harv-toolbar">
+      <div class="filters">
+        <input type="date" id="hfFrom" title="From date">
+        <span class="sep">–</span>
+        <input type="date" id="hfTo" title="To date">
+        <select id="hfQc" title="QC filter">
+          <option value="">QC: All</option>
+          <option value="pass">Pass</option>
+          <option value="fail">Fail</option>
+          <option value="none">No QC</option>
+        </select>
+        <input id="hfSearch" class="search" placeholder="Search note / id">
+      </div>
+      <div class="actions">
+        <button id="reloadHarvest" class="dash-btn">Reload</button>
       </div>
     </div>
-  </section>
+    <div class="harv-summary">
+      <div class="chip"><b id="hsCount">0</b><span>Harvests</span></div>
+      <div class="chip"><b id="hsWeight">0.00</b><span>kg total</span></div>
+      <div class="chip"><b id="hsMoist">—</b><span>avg moisture</span></div>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="tbl harv-table" id="harvestTable">
+      <thead>
+        <tr>
+          <th class="sticky">Date</th>
+          <th class="sticky">From</th>
+          <th class="sticky num">Weight (kg)</th>
+          <th class="sticky num">Moisture (%)</th>
+          <th class="sticky">QC</th>
+          <th class="sticky">Note</th>
+        </tr>
+      </thead>
+      <tbody><!-- filled by JS --></tbody>
+    </table>
+
+    <!-- empty / loading states -->
+    <div id="harvEmpty" class="empty" hidden>ยังไม่มีรายการเก็บเกี่ยว</div>
+    <div id="harvLoading" class="loading" hidden>
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      กำลังโหลด…
+    </div>
+  </div>
+</div>
 
   <!-- Onboarding: Farm setup -->
   <div id="farmModal" class="modal" hidden>
@@ -463,25 +490,161 @@
   }
   function fromSafe(v){ return v==null ? '—' : String(v); }
   function esc(s){ return String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
-  function renderHarvestTable(data){
-    const tbody = document.querySelector('#harvestTable tbody'); if (!tbody) return;
-    tbody.innerHTML = '';
-    (data?.items||[]).forEach(item=>{
-      const tr = document.createElement('tr');
-      const from = item.from ? `${fromSafe(item.from.pond)} / ${fromSafe(item.from.tray)} / ${Array.isArray(item.from.crops)?item.from.crops.join(', '):fromSafe(item.from.crop)}` : '—';
-      tr.innerHTML = `
-        <td>${fmtDate(item.date)}</td>
-        <td>${esc(item.id||item.code||'')}</td>
-        <td>${item.weightKg!=null ? Number(item.weightKg).toFixed(2) : '—'}</td>
-        <td>${item.moisture!=null ? Number(item.moisture).toFixed(1) : '—'}</td>
-        <td>${esc(item.qcResult||'-')}</td>
-        <td>${esc(from)}</td>`;
-      tbody.appendChild(tr);
-    });
-  }
-  document.addEventListener('click', (e)=>{ if (e.target && e.target.id === 'reloadHarvest'){ fetchHarvests().then(d=>renderHarvestTable({items:d})).catch(console.error); } });
-  async function refreshHarvestCard(){ try{ if (!currentFarm?.id){ currentFarm = await getMyFarm(); if (!currentFarm?.id) return; } const items = await fetchHarvests(); renderHarvestTable({ items }); } catch(e){ console.error(e); } }
+  let _harvestCache = [];       // เก็บข้อมูลดิบล่าสุด
+let _harvestSortedDesc = true;
 
+function toISODateOnly(ts){
+  if (!ts) return null;
+  if (typeof ts === 'string') return ts.split('T')[0];
+  if (ts._seconds) return new Date(ts._seconds*1000).toISOString().split('T')[0];
+  return null;
+}
+
+function applyHarvestFilters(items){
+  const from = document.getElementById('hfFrom')?.value || '';
+  const to   = document.getElementById('hfTo')?.value   || '';
+  const qc   = document.getElementById('hfQc')?.value   || '';
+  const q    = (document.getElementById('hfSearch')?.value || '').trim().toLowerCase();
+
+  return (items || []).filter(it => {
+    const d = toISODateOnly(it.date);
+    if (from && d && d < from) return false;
+    if (to && d && d > to) return false;
+
+    const qcVal = String(it.qcResult || '').toLowerCase();
+    if (qc === 'pass' && qcVal !== 'pass') return false;
+    if (qc === 'fail' && qcVal !== 'fail') return false;
+    if (qc === 'none' && qcVal) return false;
+
+    if (q) {
+      const hay = [
+        it.id, it.code, it.note,
+        it.from?.pond, it.from?.tray,
+        Array.isArray(it.from?.crops) ? it.from.crops.join(',') : ''
+      ].map(v => String(v || '').toLowerCase()).join(' ');
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+function computeHarvestStats(items){
+  const n = items.length;
+  let weight = 0, moistSum = 0, moistCnt = 0;
+  for (const it of items){
+    if (typeof it.weightKg === 'number') weight += it.weightKg;
+    if (typeof it.moisture === 'number'){ moistSum += it.moisture; moistCnt++; }
+  }
+  return {
+    count: n,
+    weight: weight,
+    avgMoist: moistCnt ? (moistSum / moistCnt) : null
+  };
+}
+
+function qcBadge(qc){
+  const v = String(qc || '').toLowerCase();
+  if (!v) return '<span class="qc qc-none">—</span>';
+  if (v === 'pass' || v === 'ok' || v === 'good') return '<span class="qc qc-pass">Pass</span>';
+  if (v === 'fail' || v === 'ng' || v === 'bad') return '<span class="qc qc-fail">Fail</span>';
+  return `<span class="qc qc-other">${escapeHtml(String(qc))}</span>`;
+}
+
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
+
+function renderHarvestTable(data){
+  const tbody = document.querySelector('#harvestTable tbody');
+  const empty = document.getElementById('harvEmpty');
+  const loading = document.getElementById('harvLoading');
+  if (!tbody) return;
+  const raw = Array.isArray(data?.items) ? data.items : [];
+  _harvestCache = raw.slice();
+
+  // sort by date desc/asc
+  const sorted = raw.slice().sort((a,b)=>{
+    const ad = new Date(toISODateOnly(a.date) || 0).getTime();
+    const bd = new Date(toISODateOnly(b.date) || 0).getTime();
+    return _harvestSortedDesc ? (bd - ad) : (ad - bd);
+  });
+
+  const rows = applyHarvestFilters(sorted);
+
+  // stats
+  const stat = computeHarvestStats(rows);
+  document.getElementById('hsCount').textContent  = String(stat.count);
+  document.getElementById('hsWeight').textContent = stat.weight.toFixed(2);
+  document.getElementById('hsMoist').textContent  = (stat.avgMoist==null? '—' : stat.avgMoist.toFixed(1));
+
+  // render
+  tbody.innerHTML = '';
+  for (const item of rows){
+    const tr = document.createElement('tr');
+    const fromTxt = item.from
+      ? `${item.from.pond ?? '-'} / ${item.from.tray ?? '-'}${Array.isArray(item.from.crops)&&item.from.crops.length ? ' / ' + item.from.crops.join(', ') : ''}`
+      : '—';
+    const dateCell = toISODateOnly(item.date) || '—';
+    const weight   = (item.weightKg!=null ? Number(item.weightKg).toFixed(2) : '—');
+    const moist    = (item.moisture!=null ? Number(item.moisture).toFixed(1) : '—');
+    const note     = item.note ? escapeHtml(item.note) : '—';
+
+    tr.innerHTML = `
+      <td>${dateCell}</td>
+      <td>${escapeHtml(fromTxt)}</td>
+      <td class="num">${weight}</td>
+      <td class="num">${moist}</td>
+      <td>${qcBadge(item.qcResult)}</td>
+      <td>${note}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+
+  // empty/loading states
+  empty.hidden   = rows.length !== 0;
+  loading.hidden = true;
+}
+
+// hook filters
+['hfFrom','hfTo','hfQc','hfSearch'].forEach(id=>{
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', ()=> renderHarvestTable({ items: _harvestCache }));
+});
+
+// toggle sort byคลิกหัวคอลัมน์ Date
+document.addEventListener('click', (e)=>{
+  const th = e.target.closest('th');
+  if (!th) return;
+  if (th.textContent.trim().toLowerCase() === 'date'){
+    _harvestSortedDesc = !_harvestSortedDesc;
+    renderHarvestTable({ items: _harvestCache });
+  }
+});
+
+  document.addEventListener('click', (e)=>{ if (e.target && e.target.id === 'reloadHarvest'){ fetchHarvests().then(d=>renderHarvestTable({items:d})).catch(console.error); } });
+  async function refreshHarvestCard(){
+  try{
+    const loading = document.getElementById('harvLoading');
+    const empty   = document.getElementById('harvEmpty');
+    if (loading) loading.hidden = false;
+    if (empty)   empty.hidden   = true;
+
+    if (!currentFarm?.id){
+      currentFarm = await getMyFarm();
+      if (!currentFarm?.id){
+        if (loading) loading.hidden = true;
+        if (empty) empty.hidden = false;
+        return;
+      }
+    }
+    const items = await fetchHarvests();
+    renderHarvestTable({ items });
+  }catch(e){
+    console.error(e);
+    const loading = document.getElementById('harvLoading');
+    const empty   = document.getElementById('harvEmpty');
+    if (loading) loading.hidden = true;
+    if (empty) empty.hidden = false;
+  }
+}
   /* Boot */
   window.addEventListener('DOMContentLoaded', async () => {
     try {
