@@ -69,35 +69,64 @@ async function getMyFarmFor(uid: string) {
   return out;
 }
 
+async function findFarmIdByUser(uid: string): Promise<string | null> {
+  const mapDoc = await db.collection('user_farms').doc(uid).get();
+  const mapData = mapDoc.data();
+  if (mapDoc.exists && mapData?.farmId) return String(mapData.farmId);
+
+  // fallback: collectionGroup แต่กลืน error index
+  try {
+    const mem = await db.collectionGroup('members').where('uid', '==', uid).limit(1).get();
+    if (!mem.empty) return mem.docs[0].ref.parent.parent!.id;
+  } catch (e: any) {
+    if (String(e?.code) !== '9' && !/FAILED_PRECONDITION/i.test(String(e?.message||''))) throw e;
+  }
+  return null;
+}
+
+async function getFarmDocOut(farmId: string) {
+  const doc = await db.collection('farms').doc(farmId).get();
+  if (!doc.exists) return null;
+  const raw = doc.data() || {};
+  const out: any = { id: doc.id, ...raw };
+  out.createdAtIso = tsToIso(raw.createdAt);
+  out.updatedAtIso = tsToIso(raw.updatedAt);
+  delete out.createdAt; delete out.updatedAt;
+  return out;
+}
+
 /* -------------------------- POST /createOrJoinFarm -------------------------- */
 export const createOrJoinFarm = onRequest(
   { region: "asia-southeast1" },
   withCors(async (req, res) => {
     if (req.method !== "POST") { res.status(405).json({ error: "method not allowed" }); return; }
-
     try {
       const uid = String(req.get("x-dev-uid") || "").trim() || "dev-user";
       const { name, lat, lng, address } = (req.body || {});
       const LAT = Number(lat), LNG = Number(lng);
       if (!name || !Number.isFinite(LAT) || !Number.isFinite(LNG)) {
-        res.status(400).json({ error: "invalid name/lat/lng" }); return;
+        res.status(400).json({ error: "invalid name/lat/lng", got: { name, lat, lng } });
+        return;
       }
 
-      // มีฟาร์มอยู่แล้ว? → คืนกลับ
-      const mine = await getMyFarmFor(uid);
-      if (mine) { res.json({ ok: true, farmId: mine.id, farm: mine }); return; }
+      // ถ้ามีฟาร์มอยู่แล้ว ส่งคืนนิ่ง ๆ
+      const existFarmId = await findFarmIdByUser(uid);
+      if (existFarmId) {
+        const farmOut = await getFarmDocOut(existFarmId);
+        res.json({ ok: true, farmId: existFarmId, farm: farmOut, scaffold: false });
+        return;
+      }
 
       const now = admin.firestore.FieldValue.serverTimestamp();
-      const nowTs = admin.firestore.Timestamp.now();
+      const farmRef = db.collection("farms").doc();
       const batch = db.batch();
 
       // farms/{farmId}
-      const farmRef = db.collection("farms").doc();
-      const farmId = farmRef.id;
       batch.set(farmRef, {
         name: String(name).trim(),
         location: { lat: LAT, lng: LNG, address: address ?? null },
         createdBy: uid, createdAt: now, updatedAt: now,
+        scaffoldVersion: 1
       }, { merge: true });
 
       // farms/{farmId}/members/{uid}
@@ -105,60 +134,52 @@ export const createOrJoinFarm = onRequest(
         uid, role: "owner", joinedAt: now, status: "active",
       }, { merge: true });
 
-      // ---------- scaffold: อย่างละ 1 ตัว (top-level) ----------
-      // ponds (ตัวอย่าง)
-      const pondRef = db.collection("ponds").doc();
+      // user_farms/{uid} mapping
+      batch.set(db.collection('user_farms').doc(uid), {
+        farmId: farmRef.id, joinedAt: now,
+      }, { merge: true });
+
+      // ✅ scaffold: ponds (top-level)
+      const pondRef = db.collection('ponds').doc();
       batch.set(pondRef, {
-        farmId, code: "POND-A", name: "บ่อ A",
-        areaM2: null, status: "active", createdAt: now, updatedAt: now,
+        farmId: farmRef.id, code: 'POND-A', name: 'บ่อ A',
+        areaM2: null, status: 'active', createdAt: now, updatedAt: now
       });
 
-      // trays (ตัวอย่าง) — ผูกบ่อ
-      const trayRef = db.collection("trays").doc();
+      // ✅ scaffold: trays (top-level)
+      const trayRef = db.collection('trays').doc();
       batch.set(trayRef, {
-        farmId, pondId: pondRef.id, code: "TRAY-01",
-        capacity: null, status: "idle", createdAt: now, updatedAt: now,
+        farmId: farmRef.id, pondId: pondRef.id, code: 'TRAY-01',
+        capacity: null, status: 'idle', createdAt: now, updatedAt: now
       });
 
-      // crops (ตัวอย่าง) — ผูกถาด, ชนิด “ผำ”, ยังไม่ปลูก
-      const cropRef = db.collection("crops").doc();
+      // ✅ scaffold: crops (top-level)
+      const cropRef = db.collection('crops').doc();
       batch.set(cropRef, {
-        farmId, trayId: trayRef.id,
-        species: "ผำ",
-        plantedAt: null, status: "idle",
-        createdAt: now, updatedAt: now,
+        farmId: farmRef.id, trayId: trayRef.id, species: 'ผำ',
+        plantedAt: null, status: 'idle', createdAt: now, updatedAt: now
       });
 
-      // ---------- scaffold (nested) : farms/{farmId}/harvests ----------
-      // สร้างเอกสาร harvest ตัวอย่าง 1 รายการเพื่อให้ตารางหน้าเว็บมีข้อมูลทันที
-      const hvRef = farmRef.collection("harvests").doc();
-      batch.set(hvRef, {
-        date: now,              // ใช้ field 'date' ให้เข้ากับโค้ดหน้าเว็บ
-        weightKg: null,
-        moisture: null,
-        qcResult: null,
-        note: "Initial scaffold",
-        operatorUid: uid,
-        createdAt: now, updatedAt: now,
+      // ✅ scaffold: farms/{farmId}/harvests/{harvestId}
+      const harvestRef = farmRef.collection('harvests').doc();
+      batch.set(harvestRef, {
+        date: now, weightKg: null, moisture: null, qcResult: null,
+        note: 'Initial scaffold', operatorUid: uid, createdAt: now, updatedAt: now
       });
-
-      // หมายเหตุ: **ไม่**สร้าง harvest_crops ตามที่ร้องขอ
 
       await batch.commit();
 
-      // อ่านกลับเพื่อแปลง Timestamp เป็น *Iso
-      const snap = await farmRef.get();
-      const raw = snap.data() || {};
-      const farmOut: any = { id: farmId, ...raw };
-      farmOut.createdAtIso = tsToIso(raw.createdAt);
-      farmOut.updatedAtIso = tsToIso(raw.updatedAt);
-      delete farmOut.createdAt; delete farmOut.updatedAt;
-
-      res.json({ ok: true, farmId, farm: farmOut, scaffold: {
-        pondId: pondRef.id, trayId: trayRef.id, cropId: cropRef.id, harvestId: hvRef.id, atIso: nowTs.toDate().toISOString()
-      }});
+      const farmOut = await getFarmDocOut(farmRef.id);
+      res.json({
+        ok: true,
+        farmId: farmRef.id,
+        farm: farmOut,
+        scaffold: { pondId: pondRef.id, trayId: trayRef.id, cropId: cropRef.id, harvestId: harvestRef.id }
+      });
     } catch (e: any) {
-      res.status(400).json({ error: e?.message || String(e) });
+      const code = e?.code || ''; const msg = e?.message || String(e);
+      const isPrecond = code === 9 || /FAILED_PRECONDITION/i.test(msg);
+      res.status(isPrecond ? 412 : 400).json({ error: msg, code });
     }
   })
 );
@@ -169,7 +190,8 @@ export const myFarm = onRequest(
   withCors(async (req, res) => {
     try {
       const uid = String(req.get("x-dev-uid") || "").trim() || "dev-user";
-      const farm = await getMyFarmFor(uid);
+      const farmId = await findFarmIdByUser(uid);
+      const farm = farmId ? await getFarmDocOut(farmId) : null;
       res.json({ ok: true, farm: farm || null });
     } catch (e: any) {
       res.json({ ok: false, farm: null, error: e?.message || String(e) });
@@ -189,32 +211,25 @@ export const harvests = onRequest(
   { region: "asia-southeast1" },
   withCors(async (req, res) => {
     try {
-      const farmId = String(req.query.farmId || "");
-      const limit = Math.min(200, Number(req.query.limit || 50));
-      const includeLineage = String(req.query.includeLineage || "0") === "1";
+      const farmId = String(req.query.farmId || "").trim();
+      const limit = Math.min(Number(req.query.limit || 50), 200);
       if (!farmId) { res.status(400).json({ error: "missing farmId" }); return; }
 
-      const hs = await db.collection(`farms/${farmId}/harvests`)
-        .orderBy("date", "desc").limit(limit).get();
+      const snap = await db.collection('farms').doc(farmId)
+        .collection('harvests')
+        .orderBy('date', 'desc').limit(limit).get();
 
       const items: any[] = [];
-for (const h of hs.docs) {
-  const data = h.data() || {};
-
-  const out: any = {
-    id: h.id,
-    date: tsToIso(data.date), // ISO string พร้อมใช้ที่หน้าเว็บ
-    weightKg: (data.weightKg === undefined || data.weightKg === null) ? null : Number(data.weightKg),
-    moisture: (data.moisture === undefined || data.moisture === null) ? null : Number(data.moisture),
-    qcResult: (data.qcResult === undefined) ? null : data.qcResult,
-    from: null
-  };
-
-        if (includeLineage) {
-          // สามารถเติม lookup lineage ภายหลังได้
-          out.from = null;
-        }
-        items.push(out);
+      for (const doc of snap.docs) {
+        const d = doc.data() || {};
+        items.push({
+          id: doc.id,
+          date: tsToIso(d.date),
+          weightKg: (d.weightKg === undefined || d.weightKg === null) ? null : Number(d.weightKg),
+          moisture: (d.moisture === undefined || d.moisture === null) ? null : Number(d.moisture),
+          qcResult: (d.qcResult === undefined) ? null : d.qcResult,
+          from: null
+        });
       }
       res.json({ ok: true, items });
     } catch (e: any) {

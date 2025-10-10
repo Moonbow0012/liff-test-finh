@@ -1,7 +1,9 @@
 {
   "name": "functions",
   "main": "lib/index.js",
-  "engines": { "node": "20" },
+  "engines": {
+    "node": "20"
+  },
   "scripts": {
     "clean": "rimraf lib",
     "build": "tsc -p .",
@@ -12,7 +14,9 @@
     "firebase-functions": "^5.0.1"
   },
   "devDependencies": {
-    "typescript": "^5.4.0",
-    "rimraf": "^5.0.5"
+    "@types/node": "^24.7.1",
+    "rimraf": "^5.0.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
   }
 }
