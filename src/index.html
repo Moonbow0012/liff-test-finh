@@ -264,18 +264,21 @@ window.authedGet = authedGet;
 window.authedPost = authedPost;
 
 /* ========== Progress & Shadow ========== */
-async function getProgress(deviceId){
-  // ถ้า Cloud Run ยังไม่เปิด CORS: เปลี่ยนให้เรียก proxy ใน Functions แทน (ดูส่วน farm.ts ด้านล่าง) แล้วแก้เป็น: return authedGet(`/progress?deviceId=${encodeURIComponent(deviceId)}`);
-  return authedGet(`/getProgress?deviceId=${encodeURIComponent(deviceDocId)}`);
+async function getProgress(docId){
+  const sel = document.getElementById('deviceSelect');
+  const id = docId || (sel && sel.value) || localStorage.getItem('deviceId');
+  if (!id) throw new Error('no device id selected');
+  return authedGet(`/getProgress?deviceId=${encodeURIComponent(id)}`);
 }
 
-async function loadProgress(deviceId){
-  const data = await getProgress(deviceId);
+async function loadProgress(docId){
+  const prog = await getProgress(docId);
   const pct = typeof data.percent === 'number' ? Math.max(0, Math.min(100, data.percent)) : null;
   const lvl = normalizeLevel(data.level);
   if (pctTopDash) pctTopDash.textContent = pct!=null ? pct.toFixed(1) : '—';
   if (barFillDash) barFillDash.style.width = pct!=null ? `${pct}%` : '0%';
   if (growthLevelDash) growthLevelDash.textContent = lvl;
+  return prog;
 }
 
 /* ใช้ GraphQL ผ่าน proxy ใน Functions (กัน CORS) */
@@ -663,14 +666,21 @@ if (sel){
 }
 
 async function refreshAll(){
-  if (!sel?.value) return;
-  // ลองให้ renderDkpiForDevice เป็นตัวกำหนดค่า KPI หลัก (รวม fallback)
+  const sel = document.getElementById('deviceSelect');
+if (sel){
+  sel.onchange = async () => {
+    localStorage.setItem('deviceId', sel.value);
+    await refreshAll();
+  };
+}
+  const docId = (sel && sel.value) || localStorage.getItem('deviceId');
+  if (!docId) return; // ยังไม่ได้เลือกอุปกรณ์
+
   await Promise.all([
-    renderDkpiForDevice(sel.value),
-    loadProgress(sel.value),       // ใช้ progress bar บนหน้า
-    loadShadow(sel.value)          // เก็บ series ไปวาด spark
+    renderDkpiForDevice(docId), // ใช้ docId → ภายใน map เป็น nexiiotDeviceId เอง
+    loadProgress(docId),
+    loadShadow(docId),
   ]);
-  document.getElementById('dashboard').hidden = false;
 }
 
     $('refreshBtn') && ($('refreshBtn').onclick = refreshAll);
