@@ -376,6 +376,37 @@ function initMapOnce(){
   if (navigator.geolocation) navigator.geolocation.getCurrentPosition(pos=> setLL(pos.coords.latitude, pos.coords.longitude));
 }
 
+function initMapOnce(){
+  if (gmap) return;
+  const el = document.getElementById('map');
+  gmap = new google.maps.Map(el, { center:{lat:13.736,lng:100.523}, zoom:6 });
+  gmarker = new google.maps.Marker({ map:gmap, draggable:true });
+
+  const latEl = document.getElementById('lat'), lngEl = document.getElementById('lng');
+  const setLL = (lat,lng) => { 
+    gmarker.setPosition({lat,lng});
+    gmap.panTo({lat,lng});
+    latEl.value = lat.toFixed(6);
+    lngEl.value = lng.toFixed(6);
+  };
+
+  // ✅ ตั้งค่าดีฟอลต์ทันที (กรุงเทพ)
+  setLL(13.736, 100.523);
+
+  gmap.addListener('click', (e)=> setLL(e.latLng.lat(), e.latLng.lng()));
+
+  places = new google.maps.places.Autocomplete(document.getElementById('placeSearch'));
+  places.addListener('place_changed', ()=>{
+    const p = places.getPlace();
+    const ll = p.geometry?.location;
+    if (ll) setLL(ll.lat(), ll.lng());
+  });
+
+  if (navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(pos => setLL(pos.coords.latitude, pos.coords.longitude));
+  }
+}
+
 /* ========== Formatters (DKPI) ========== */
 const formatPh   = p => (p==null || Number.isNaN(+p)) ? '—' : `${(+p).toFixed(1)} pH`;
 const formatTemp = t => (t==null || Number.isNaN(+t)) ? '—' : `${(+t).toFixed(1)}°C`;
@@ -731,7 +762,7 @@ setInterval(() => {
   window.__gmapsReady = () => window.dispatchEvent(new Event('gmaps-ready'));
 </script>
 <script
-  async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA2Gx7cUFVTHVR65w371mqgkUCWNlO1SgY&libraries=places&callback=__gmapsReady"
+  async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA2Gx7cUFVTHVR65w371mqgkUCWNlO1SgY&libraries=places&loading=async&callback=__gmapsReady"
   defer></script>
 </body>
 </html> 
