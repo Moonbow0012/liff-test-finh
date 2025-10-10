@@ -196,6 +196,42 @@
   let DEVICES = [];
   let DEVICE_BY_ID = {};
 
+  async function fillLineUser(){
+  const $id = (id)=>document.getElementById(id);
+  const elName = $id('lineName');
+  const elUid  = $id('lineUid');
+  const elAvt  = $id('lineAvatar');
+
+  try{
+    // ต้อง login ก่อน
+    if (!liff.isLoggedIn()) await ensureLogin();
+
+    // 1) พยายามเอาจากโปรไฟล์
+    let name, uid, avatar;
+    try{
+      const prof = await liff.getProfile();
+      name   = prof?.displayName;
+      uid    = prof?.userId;
+      avatar = prof?.pictureUrl;
+    }catch(e){
+      // 2) Fallback จาก ID Token (ต้องเปิด scope "profile" ใน LIFF Console)
+      const idt = liff.getDecodedIDToken?.();
+      name   = name || idt?.name || idt?.nickname;
+      avatar = avatar || idt?.picture;
+      uid    = uid || idt?.sub;
+    }
+
+    // 3) Fallback สุดท้าย = uid ที่เราสร้างเอง
+    if (!name) name = localStorage.getItem('finh_uid') || 'LINE User';
+
+    if (elName) elName.textContent = name;
+    if (elUid && uid){ elUid.textContent = uid; elUid.hidden = false; }
+    if (elAvt && avatar){ elAvt.src = avatar; elAvt.hidden = false; }
+  }catch(e){
+    console.warn('fillLineUser failed', e);
+  }
+}
+
   const docIdOf = (d) => d.deviceId || d.id || d.name;
   const nxIdOf  = (d) => d.nexiiotDeviceId || d.deviceId || d.id;
   function toNxId(deviceDocId){ const meta = DEVICE_BY_ID[deviceDocId]; return meta ? nxIdOf(meta) : deviceDocId; }
@@ -236,6 +272,21 @@
     else liff.login({ withLoginOnExternalBrowser:true, redirectUri });
     return new Promise(()=>{});
   }
+
+  await fillLineUser();   // ← เติมชื่อ/รูป LINE ที่มุมซ้าย navbar
+
+// ทำให้ปุ่ม refresh หมุนระหว่างโหลด
+const refreshBtnEl = document.getElementById('refreshBtn');
+async function refreshAllWithSpin(){
+  try{
+    refreshBtnEl?.classList.add('spin');
+    await refreshAll();
+  }finally{
+    refreshBtnEl?.classList.remove('spin');
+  }
+}
+// ถ้ามีการ bind เดิมอยู่แล้ว ให้แทนที่ด้วยอันนี้
+if (refreshBtnEl) refreshBtnEl.onclick = refreshAllWithSpin;
 
   try {
   const prof = await liff.getProfile();
@@ -681,6 +732,7 @@ document.addEventListener('click', (e)=>{
       await liff.init({ liffId: LIFF_ID });
       await ensureLogin();
       await ensureFarmOnce();
+      await fillLineUser();
 
       const qs = new URLSearchParams(location.search);
       if (qs.get('code') || qs.get('liffRedirectUri')) history.replaceState({}, '', stripRedirectUri());
@@ -696,25 +748,28 @@ document.addEventListener('click', (e)=>{
         DEVICE_BY_ID = Object.fromEntries(DEVICES.map(d => [docIdOf(d), d]));
       } catch (e) { showError(e); }
 
-      if (sel){
-        sel.innerHTML = '';
-        if (DEVICES.length === 0){
-          const op = document.createElement('option');
-          op.value=''; op.textContent='No device';
-          sel.appendChild(op);
-        } else {
-          DEVICES.forEach(d => {
-            const op = document.createElement('option');
-            op.value = docIdOf(d);
-            op.textContent = d.name || nxIdOf(d);
-            sel.appendChild(op);
-          });
-          const saved = localStorage.getItem('deviceId');
-          const hasSaved = saved && [...sel.options].some(o => o.value === saved);
-          sel.value = hasSaved ? saved : docIdOf(DEVICES[0]);
-          localStorage.setItem('deviceId', sel.value);
-        }
-      }
+if (sel){
+  sel.innerHTML = '';
+  if (DEVICES.length === 0){
+    const op = document.createElement('option');
+    op.value=''; op.textContent='No device';
+    sel.appendChild(op);
+  } else {
+    DEVICES.forEach((d, i) => {
+      const id = docIdOf(d);               // คงใช้ id เดิมเป็นค่า value
+      const label = d.name || d.title || `Device ${i+1}`;  // ← แสดงชื่อสั้น
+      const op = document.createElement('option');
+      op.value = id;
+      op.textContent = label;
+      op.title = nxIdOf(d) || id;          // hover แล้วเห็นรหัสเต็ม
+      sel.appendChild(op);
+    });
+    const saved = localStorage.getItem('deviceId');
+    const hasSaved = saved && [...sel.options].some(o => o.value === saved);
+    sel.value = hasSaved ? saved : docIdOf(DEVICES[0]);
+    localStorage.setItem('deviceId', sel.value);
+  }
+}
 
       async function refreshAll(){
         const sel = document.getElementById('deviceSelect');
