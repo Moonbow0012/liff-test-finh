@@ -284,15 +284,33 @@ async function loadShadow(deviceId){
   return { data, ph, temp };
 }
 async function renderDkpiForDevice(deviceId){
-  const Q = 'query($deviceid:String!){ shadow(deviceid:$deviceid){ data } }';
-  const r = await authedPost('/gql', { query: Q, variables: { deviceid: deviceId }});
-  const data = r?.data?.shadow?.data || {};
-  const water = getNum(data, ['water_level','water','level','wl','water_percent','waterPct']);
-  const ph    = getNum(data, ['soil_ph','pH','ph']);
-  const temp  = getNum(data, ['temp','temperature','temp_c']);
-  $('dkpi-water').textContent = formatWater(water);
-  $('dkpi-ph').textContent    = formatPh(ph);
-  $('dkpi-temp').textContent  = formatTemp(temp);
+  let raw = null;
+
+  // 1) พยายามจาก GraphQL /gql ก่อน
+  try {
+    const Q = 'query($deviceid:String!){ shadow(deviceid:$deviceid){ data } }';
+    const r = await authedPost('/gql', { query: Q, variables: { deviceid: deviceId }});
+    raw = r?.data?.shadow?.data || null;
+  } catch {}
+
+  // 2) ถ้าไม่ได้ ให้ fallback มา Progress (perDevice[deviceId].values)
+  if (!raw) {
+    try {
+      const prog = await getProgress(deviceId);
+      raw = prog?.perDevice?.[deviceId]?.values || prog?.values || prog || null;
+    } catch {}
+  }
+
+  const { water, ph, temp } = extractKpis(raw || {});
+  document.getElementById('dkpi-water').textContent = formatWater(water);
+  document.getElementById('dkpi-ph').textContent    = formatPh(ph);
+  document.getElementById('dkpi-temp').textContent  = formatTemp(temp);
+
+  // อัปเดตกราฟ spark
+  updateSeries(deviceId, (typeof ph==='number'?ph:null), (typeof temp==='number'?temp:null));
+  drawSpark(deviceId);
+
+  // จำ device ที่เลือก
   localStorage.setItem('deviceId', deviceId);
 }
 
@@ -330,6 +348,76 @@ const formatTemp = t => (t==null || Number.isNaN(+t)) ? '—' : `${(+t).toFixed(
 function formatWater(w){
   if (w==null || Number.isNaN(+w)) return '—';
   const n = +w; if (n <= 1) return `${Math.round(n*100)}%`; if (n <= 100) return `${Math.round(n)}%`; return String(n);
+}
+
+function _flattenValues(raw){
+  // รองรับทั้ง shape: data.values, progress.perDevice[deviceId].values, หรือแบนอยู่แล้ว
+  const base = raw?.values && typeof raw.values==='object' ? raw.values : raw;
+  const out = {};
+  (function walk(obj){
+    Object.keys(obj||{}).forEach(k=>{
+      const v = obj[k];
+      if (v && typeof v === 'object' && !Array.isArray(v)) { walk(v); }
+      else { out[String(k).toLowerCase()] = v; }
+    });
+  })(base||{});
+  return out;
+}
+
+// เลือกคีย์: exact ก่อน, ถ้าไม่เจอค่อย contains
+function _pickNumber(map, exactKeys=[], containsKeys=[]){
+  // exact
+  for (const key of exactKeys){
+    const v = map[key];
+    const n = Number(v);
+    if (!Number.isNaN(n)) return n;
+  }
+  // contains
+  outer: for (const k in map){
+    const lk = k.toLowerCase();
+    for (const p of containsKeys){
+      if (lk.includes(p)){
+        const n = Number(map[k]);
+        if (!Number.isNaN(n)) return n;
+        continue outer;
+      }
+    }
+  }
+  return null;
+}
+
+// ---- KPI extract helpers ----
+function extractKpis(raw){
+  const m = _flattenValues(raw);
+
+  // pH: เน้น water_ph > soil_ph > ph (และกรองค่าที่หลุดช่วง 0–14 ทิ้ง)
+  let ph = _pickNumber(
+    m,
+    ['water_ph','soil_ph','ph'],     // exact first
+    ['_ph']                          // any key that contains '_ph'
+  );
+  if (ph != null && (ph <= 0.1 || ph > 14)) ph = null;
+
+  // Temp: เอาอุณหภูมิน้ำก่อน แล้วทั่วไป
+  let temp = _pickNumber(
+    m,
+    ['water_ph_temp','water_ec_temp','water_temp','temperature_in','temp_out','weather_temperature','soil_temperature'],
+    ['temp','temperature','_temp']   // contains
+  );
+
+  // Water: ระดับน้ำ/ความชื้น/ตัวชี้วัดที่เป็น % ก่อน
+  let water = _pickNumber(
+    m,
+    ['water_percent','water_pct','wl','water_level','level','soil_moisture'],
+    ['water_ec']                     // สุดท้ายอนุโลม EC
+  );
+  if (water != null){
+    // ทำให้แสดงเป็น % สมเหตุสมผล
+    if (water <= 1) water = water * 100;      // 0..1 -> 0..100%
+    // ถ้าเกิน 100 มาก ๆ ปล่อยเป็นค่าดิบ (ไม่บังคับ)
+  }
+
+  return { water, ph, temp };
 }
 
 /* ========== Sparkline (pH & Temp) ========== */
@@ -566,11 +654,16 @@ DEVICES = await listDevices();      // ใช้ helper ที่เพิ่ง
       }
     }
 
-    async function refreshAll(){
-      if (!sel?.value) return;
-      await Promise.all([ loadShadow(sel.value), loadProgress(sel.value), renderDkpiForDevice(sel.value) ]);
-      $('dashboard').hidden = false;
-    }
+async function refreshAll(){
+  if (!sel?.value) return;
+  // ลองให้ renderDkpiForDevice เป็นตัวกำหนดค่า KPI หลัก (รวม fallback)
+  await Promise.all([
+    renderDkpiForDevice(sel.value),
+    loadProgress(sel.value),       // ใช้ progress bar บนหน้า
+    loadShadow(sel.value)          // เก็บ series ไปวาด spark
+  ]);
+  document.getElementById('dashboard').hidden = false;
+}
 
     $('refreshBtn') && ($('refreshBtn').onclick = refreshAll);
     sel && (sel.onchange = async ()=>{ localStorage.setItem('deviceId', sel.value||''); await refreshAll(); });
