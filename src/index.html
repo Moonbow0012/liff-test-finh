@@ -201,17 +201,24 @@ async function ensureLogin(){
   return new Promise(()=>{});
 }
 
+function getStableUid(){
+  let uid = localStorage.getItem('finh_uid');
+  if (uid) return uid;
+  try {
+    const d = liff.getDecodedIDToken?.();
+    uid = d?.sub || d?.amr?.[0];
+  } catch {}
+  if (!uid) uid = 'dev-user';
+  localStorage.setItem('finh_uid', uid);
+  return uid;
+}
 function buildAuthHeaders(){
+  const h = { 'Content-Type':'application/json' };
   const idToken = sessionStorage.getItem('line_id_token') || liff.getIDToken();
   const access  = sessionStorage.getItem('line_access_token') || liff.getAccessToken();
-  const h = { 'Content-Type':'application/json' };
   if (idToken && idToken.includes('.')) h['x-line-id-token'] = idToken;
   else if (access) h['x-line-access-token'] = access;
-  try {
-    const decoded = liff.getDecodedIDToken?.();
-    const uid = decoded?.sub || decoded?.amr?.[0] || 'dev-user';
-    h['x-dev-uid'] = uid;
-  } catch { h['x-dev-uid'] = 'dev-user'; }
+  h['x-dev-uid'] = getStableUid();  // << คงที่
   return h;
 }
 
@@ -379,15 +386,14 @@ async function getMyFarm(){
   try {
     const r = await authedGet('/tracking/myFarm');
     const f = r?.farm || null;
-    if (!f) return null;
-    // เผื่อ backend ส่ง farmId แยก หรือ farm ไม่มี id
-    if (!f.id) {
-      f.id = r?.farmId || r?.id || f?.farmId || null;
+    if (!f) {
+      const cachedId = localStorage.getItem('finh_farm_id');
+      return cachedId ? { id: cachedId } : null;
     }
+    if (!f.id) f.id = r?.farmId || r?.id || f?.farmId || null;
     if (f.id) localStorage.setItem('finh_farm_id', f.id);
     return f;
   } catch {
-    // fallback: ใช้ id ที่เคยเก็บไว้ใน localStorage หากมี
     const cachedId = localStorage.getItem('finh_farm_id');
     return cachedId ? { id: cachedId } : null;
   }
@@ -396,6 +402,10 @@ async function getMyFarm(){
 async function ensureFarmOnce(){
   const fromServer = await getMyFarm();
   if (fromServer){ currentFarm = fromServer; return true; }
+
+  // fallback: ถ้ามี cache id แล้ว ให้ใช้ไปก่อนและไม่เปิด modal
+  const cachedId = localStorage.getItem('finh_farm_id');
+  if (cachedId){ currentFarm = { id: cachedId }; return true; }
 
   await waitForMapsReady(); initMapOnce();
   const modal = document.getElementById('farmModal');
@@ -412,26 +422,30 @@ async function ensureFarmOnce(){
         alert('กรอกชื่อฟาร์มและตำแหน่งให้ครบ (lat/lng ต้องเป็นตัวเลข)');
         return;
       }
-
       try{
         const created = await authedPost('/tracking/createOrJoinFarm', { name, lat, lng, address });
-        // พยายามตั้ง currentFarm.id จากทุกช่องทางที่เป็นไปได้
-        const newId = created?.farmId || created?.farm?.id || localStorage.getItem('finh_farm_id');
+        const newId = created?.farmId || created?.farm?.id;
+        if (newId) localStorage.setItem('finh_farm_id', newId);
         currentFarm = created?.farm || { id: newId, name, location: { lat, lng, address } };
-        if (currentFarm?.id) localStorage.setItem('finh_farm_id', currentFarm.id);
 
-        // ดึงซ้ำจาก myFarm เพื่อความชัวร์
+        // ดึงซ้ำจาก myFarm เพื่อ sync
         const fromServer2 = await getMyFarm();
         if (fromServer2) currentFarm = fromServer2;
 
         modal.hidden = true;
         resolve(true);
-      } catch(e) {
-        console.error('createOrJoinFarm failed:', e);
-        alert(`createOrJoinFarm failed:\n${e?.message || e}`);
-      }
+      }catch(e){ console.error(e); alert(`createOrJoinFarm failed:\n${e?.message || e}`); }
     };
   });
+}
+
+const saved = localStorage.getItem('deviceId');
+if (devices.length > 0) {
+  // ถ้าไม่มี saved หรือ saved ไม่อยู่ในลิสต์ → เลือกตัวแรก
+  const firstId = devices[0].deviceId || devices[0].id || devices[0].name;
+  const hasSaved = saved && [...sel.options].some(o => o.value === saved);
+  sel.value = hasSaved ? saved : firstId;
+  localStorage.setItem('deviceId', sel.value);
 }
 
 /* ========== Harvest Tracking ========== */
@@ -549,7 +563,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   window.__gmapsReady = () => window.dispatchEvent(new Event('gmaps-ready'));
 </script>
 <script
-  async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA2Gx7cUFVTHVR65w371mqgkUCWNlO1SgY&libraries=places&loading=async"
+  async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA2Gx7cUFVTHVR65w371mqgkUCWNlO1SgY&libraries=places&callback=__gmapsReady"
   defer></script>
 </body>
 </html>
