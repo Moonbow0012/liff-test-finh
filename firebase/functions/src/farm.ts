@@ -99,7 +99,10 @@ async function getFarmDocOut(farmId: string) {
 export const createOrJoinFarm = onRequest(
   { region: "asia-southeast1" },
   withCors(async (req, res) => {
-    if (req.method !== "POST") { res.status(405).json({ error: "method not allowed" }); return; }
+    if (req.method !== "POST") {
+      res.status(405).json({ error: "method not allowed" });
+      return;
+    }
     try {
       const uid = String(req.get("x-dev-uid") || "").trim() || "dev-user";
       const { name, lat, lng, address } = (req.body || {});
@@ -109,7 +112,7 @@ export const createOrJoinFarm = onRequest(
         return;
       }
 
-      // ถ้ามีฟาร์มอยู่แล้ว ส่งคืนนิ่ง ๆ
+      // มีฟาร์มอยู่แล้ว? คืนกลับเลย
       const existFarmId = await findFarmIdByUser(uid);
       if (existFarmId) {
         const farmOut = await getFarmDocOut(existFarmId);
@@ -119,14 +122,17 @@ export const createOrJoinFarm = onRequest(
 
       const now = admin.firestore.FieldValue.serverTimestamp();
       const farmRef = db.collection("farms").doc();
+      const farmId = farmRef.id;
       const batch = db.batch();
 
       // farms/{farmId}
       batch.set(farmRef, {
         name: String(name).trim(),
         location: { lat: LAT, lng: LNG, address: address ?? null },
-        createdBy: uid, createdAt: now, updatedAt: now,
-        scaffoldVersion: 1
+        createdBy: uid,
+        createdAt: now,
+        updatedAt: now,
+        scaffoldVersion: 2,        // ← บอกว่าเป็น schema ใหม่ (nested)
       }, { merge: true });
 
       // farms/{farmId}/members/{uid}
@@ -134,50 +140,73 @@ export const createOrJoinFarm = onRequest(
         uid, role: "owner", joinedAt: now, status: "active",
       }, { merge: true });
 
-      // user_farms/{uid} mapping
-      batch.set(db.collection('user_farms').doc(uid), {
-        farmId: farmRef.id, joinedAt: now,
+      // user_farms/{uid}  (index lookup)
+      batch.set(db.collection("user_farms").doc(uid), {
+        farmId, joinedAt: now,
       }, { merge: true });
 
-      // ✅ scaffold: ponds (top-level)
-      const pondRef = db.collection('ponds').doc();
+      // ✅ scaffold: ทุกอย่าง “ใต้ฟาร์ม”
+      const pondRef = farmRef.collection("ponds").doc();
       batch.set(pondRef, {
-        farmId: farmRef.id, code: 'POND-A', name: 'บ่อ A',
-        areaM2: null, status: 'active', createdAt: now, updatedAt: now
+        code: "POND-A",
+        name: "บ่อ A",
+        areaM2: null,
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
       });
 
-      // ✅ scaffold: trays (top-level)
-      const trayRef = db.collection('trays').doc();
+      const trayRef = farmRef.collection("trays").doc();
       batch.set(trayRef, {
-        farmId: farmRef.id, pondId: pondRef.id, code: 'TRAY-01',
-        capacity: null, status: 'idle', createdAt: now, updatedAt: now
+        code: "TRAY-01",
+        pondId: pondRef.id,
+        capacity: null,
+        status: "idle",
+        createdAt: now,
+        updatedAt: now,
       });
 
-      // ✅ scaffold: crops (top-level)
-      const cropRef = db.collection('crops').doc();
+      const cropRef = farmRef.collection("crops").doc();
       batch.set(cropRef, {
-        farmId: farmRef.id, trayId: trayRef.id, species: 'ผำ',
-        plantedAt: null, status: 'idle', createdAt: now, updatedAt: now
+        trayId: trayRef.id,
+        species: "ผำ",
+        plantedAt: null,
+        status: "idle",
+        createdAt: now,
+        updatedAt: now,
       });
 
-      // ✅ scaffold: farms/{farmId}/harvests/{harvestId}
-      const harvestRef = farmRef.collection('harvests').doc();
+      const harvestRef = farmRef.collection("harvests").doc();
       batch.set(harvestRef, {
-        date: now, weightKg: null, moisture: null, qcResult: null,
-        note: 'Initial scaffold', operatorUid: uid, createdAt: now, updatedAt: now
+        date: now,                 // ฝั่งเว็บใช้ฟิลด์ 'date'
+        weightKg: null,
+        moisture: null,
+        qcResult: null,
+        note: "Initial scaffold",
+        operatorUid: uid,
+        createdAt: now,
+        updatedAt: now,
       });
+
+      // (ถ้ามี devices/progress ก็เพิ่ม subcollection farms/{farmId}/devices ได้ใน batch นี้เช่นกัน)
 
       await batch.commit();
 
-      const farmOut = await getFarmDocOut(farmRef.id);
+      const farmOut = await getFarmDocOut(farmId);
       res.json({
         ok: true,
-        farmId: farmRef.id,
+        farmId,
         farm: farmOut,
-        scaffold: { pondId: pondRef.id, trayId: trayRef.id, cropId: cropRef.id, harvestId: harvestRef.id }
+        scaffold: {
+          pondId: pondRef.id,
+          trayId: trayRef.id,
+          cropId: cropRef.id,
+          harvestId: harvestRef.id
+        }
       });
     } catch (e: any) {
-      const code = e?.code || ''; const msg = e?.message || String(e);
+      const code = e?.code || "";
+      const msg  = e?.message || String(e);
       const isPrecond = code === 9 || /FAILED_PRECONDITION/i.test(msg);
       res.status(isPrecond ? 412 : 400).json({ error: msg, code });
     }
@@ -215,9 +244,11 @@ export const harvests = onRequest(
       const limit = Math.min(Number(req.query.limit || 50), 200);
       if (!farmId) { res.status(400).json({ error: "missing farmId" }); return; }
 
-      const snap = await db.collection('farms').doc(farmId)
-        .collection('harvests')
-        .orderBy('date', 'desc').limit(limit).get();
+      const snap = await db.collection("farms").doc(farmId)
+        .collection("harvests")
+        .orderBy("date", "desc")
+        .limit(limit)
+        .get();
 
       const items: any[] = [];
       for (const doc of snap.docs) {
