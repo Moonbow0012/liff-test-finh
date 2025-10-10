@@ -234,6 +234,8 @@ function buildAuthHeaders(){
 }
 
 /* ========== fetch helpers (หนึ่งชุด | global) ========== */
+const FORCE_SETUP = new URLSearchParams(location.search).get('setup') === '1';
+
 async function authedGet(url) {
   const r = await fetch(toApiUrl(url), { headers: buildAuthHeaders() });
   const t = await r.text();
@@ -522,18 +524,18 @@ async function getMyFarm(){
 }
 
 async function ensureFarmOnce(){
+  // ถ้ามีฟาร์มจากเซิร์ฟเวอร์และไม่ได้บังคับ setup -> ข้ามได้
   const fromServer = await getMyFarm();
-  if (fromServer){ currentFarm = fromServer; return true; }
-  
-  // fallback: ถ้ามี cache id แล้ว ให้ใช้ไปก่อนและไม่เปิด modal
-  const cachedId = localStorage.getItem('finh_farm_id');
-  if (cachedId){ currentFarm = { id: cachedId }; return true; }
+  if (fromServer && !FORCE_SETUP){ 
+    currentFarm = fromServer; 
+    return true; 
+  }
 
+  // ✅ ไม่มีฟาร์ม (หรือถูกบังคับ setup) -> เปิดโมดัลแน่ๆ
   await waitForMapsReady(); 
   initMapOnce();
   const modal = document.getElementById('farmModal');
-  modal.hidden = false;        // ✅ เซิร์ฟเวอร์บอกว่าไม่มีฟาร์ม → เปิดโมดัล
-  // (ส่วน Promise รอปุ่ม "บันทึก" ด้านล่างคงเดิม)
+  modal.hidden = false;
 
   return await new Promise((resolve)=>{
     document.getElementById('saveFarm').onclick = async ()=>{
@@ -552,7 +554,7 @@ async function ensureFarmOnce(){
         if (newId) localStorage.setItem('finh_farm_id', newId);
         currentFarm = created?.farm || { id: newId, name, location: { lat, lng, address } };
 
-        // ดึงซ้ำจาก myFarm เพื่อ sync
+        // sync จากเซิร์ฟเวอร์อีกรอบ
         const fromServer2 = await getMyFarm();
         if (fromServer2) currentFarm = fromServer2;
 
