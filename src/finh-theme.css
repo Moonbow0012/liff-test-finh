@@ -473,32 +473,56 @@ html,body{
   .icon-btn{ width: 32px; height: 32px; }
 }
 
-/* FINAL: mobile center & clamp widths */
+/* ==== FIX: mobile topbar & hero prominence (append last) ==== */
+
+/* 1) ทำโลโก้กึ่งกลางจริง และกำหนดขนาดคงที่บนมือถือ */
 @media (max-width: 640px){
   .topbar{
     grid-template-columns: minmax(0,1fr) auto minmax(0,1fr);
-    padding:10px 10px;
-    column-gap:8px;
+    padding: 10px 10px;
+    column-gap: 8px;
   }
-  /* จัดโลโก้ให้อยู่กึ่งกลางจริง โดยไม่โดน select/ปุ่มดัน */
   .topbar .brand{
-    position:absolute; left:50%; transform:translateX(-50%);
+    position: absolute; left: 50%; transform: translateX(-50%);
   }
-
+  /* บังคับทับค่าที่เคยเป็น 100px */
+  .topbar .brand img{ height: 46px !important; }
   .topbar .left, .topbar .right{ min-width:0; overflow:hidden; }
 
-  /* จำกัดความกว้าง select + ตัดข้อความ */
+  /* จำกัดความกว้าง select ไม่ให้กินโลโก้ + ตัดคำ */
   #deviceSelect{
-    max-width:44vw;
-    font-size:12px; padding:6px 10px;
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    max-width: 44vw;
+    font-size: 12px; padding: 6px 10px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-
-  .icon-btn{ width:34px; height:34px; }
+  .icon-btn{ width: 34px; height: 34px; }
 }
 
 /* โทรศัพท์เล็กมาก */
-@media (max-width: 360px){
-  .topbar .brand img{ height:34px; }
-  #deviceSelect{ max-width:48vw; }
+@media (max-width: 380px){
+  .topbar .brand img{ height: 48px !important; } /* คงความเด่นของโลโก้ */
+  #deviceSelect{ max-width: 48vw; }
+}
+
+/* 2) ทำให้การ์ดบน (Maturity) เด่นขึ้นบนจอเล็ก */
+@media (max-width: 640px){
+  .dash-hero{
+    padding: 18px; border-radius: 18px; gap: 10px;
+  }
+  /* หัวเรื่องใช้ clamp ให้ใหญ่กว่าของเดิม */
+  .dash-hero h1{
+    font-size: clamp(30px, 7.2vw, 42px);
+    line-height: 1.12; margin-bottom: 6px;
+  }
+  /* progress bar สูงขึ้นนิด + chip อ่านง่าย */
+  :root{ --bar-h: 14px; }         /* เดิม 12px */
+  .pct{ min-width: 54px; padding: 5px 10px; font-size: 12.5px; }
+  /* KPI คงที่อ่านง่าย */
+  .dkpi b{ font-size: 18px; }
+}
+
+/* 3) ลดความสูงกราฟเล็กน้อย ไม่แย่งพื้นที่การ์ดบน */
+@media (max-width: 640px){
+  .dash-card.growth .dash-spark,
+  .dash-spark canvas{ height: 150px; }
 }
