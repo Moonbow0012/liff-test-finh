@@ -472,3 +472,33 @@ html,body{
   #deviceSelect{ max-width: 48vw; font-size: 11px; padding: 5px 8px; }
   .icon-btn{ width: 32px; height: 32px; }
 }
+
+/* FINAL: mobile center & clamp widths */
+@media (max-width: 640px){
+  .topbar{
+    grid-template-columns: minmax(0,1fr) auto minmax(0,1fr);
+    padding:10px 10px;
+    column-gap:8px;
+  }
+  /* จัดโลโก้ให้อยู่กึ่งกลางจริง โดยไม่โดน select/ปุ่มดัน */
+  .topbar .brand{
+    position:absolute; left:50%; transform:translateX(-50%);
+  }
+
+  .topbar .left, .topbar .right{ min-width:0; overflow:hidden; }
+
+  /* จำกัดความกว้าง select + ตัดข้อความ */
+  #deviceSelect{
+    max-width:44vw;
+    font-size:12px; padding:6px 10px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+
+  .icon-btn{ width:34px; height:34px; }
+}
+
+/* โทรศัพท์เล็กมาก */
+@media (max-width: 360px){
+  .topbar .brand img{ height:34px; }
+  #deviceSelect{ max-width:48vw; }
+}
