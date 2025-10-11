@@ -399,3 +399,76 @@ html,body{
 .ctrl-hint{
   margin-top:10px; font-size:12px; color:#bfe9cc;
 }
+
+@media (max-width: 480px){
+  /* Topbar: ให้คอลัมน์ซ้าย/ขวาหดตัวได้โดยไม่ดันแบรนด์ */
+  .topbar{
+    grid-template-columns: minmax(0,1fr) auto minmax(0,1fr);
+    padding: 10px 10px;
+    column-gap: 8px;
+  }
+  .topbar .left,
+  .topbar .right{ min-width: 0; overflow: hidden; }
+
+  /* Brand logo กลางขนาดพอดี */
+  .topbar .brand img{ height: 38px; }
+
+  /* Device select แคปซูลสั้น + ตัดคำ */
+  #deviceSelect{
+    max-width: 42vw;                 /* ไม่ให้กินที่โลโก้ */
+    font-size: 12px;
+    padding: 6px 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ปุ่ม refresh ขนาดกะทัดรัด */
+  .icon-btn{
+    width: 34px; height: 34px;
+  }
+
+  /* Dashboard spacing */
+  .dashboard{ padding: 12px 10px 28px; }
+
+  /* Hero card */
+  .dash-hero{ padding: 16px; border-radius: 16px; gap: 10px; }
+  .dash-hero h1{ font-size: 28px; line-height: 1.15; }
+
+  /* Progress pill */
+  :root{ --bar-h: 12px; }
+  .pct{ min-width: 48px; padding: 4px 8px; font-size: 12px; }
+
+  /* KPI: แสดงเป็นแถวเดียว (icon | label | value) */
+  .dash-kpis{ gap: 14px; }
+  .dkpi{ grid-template-columns: 18px auto max-content; }
+  .dkpi b{ font-size: 18px; margin: 0; }
+  .dkpi small{ font-size: 14px; }
+
+  /* Panel stack */
+  .dash-panels{ grid-template-columns: 1fr; gap: 12px; }
+
+  /* Growth analytics card & canvas */
+  .dash-card.growth .dash-spark,
+  .dash-spark canvas{ height: 170px; }
+
+  /* Legend ใต้กราฟให้อยู่กึ่งกลาง (ถ้ามี .legend) */
+  .dash-card .legend{
+    margin-top: 6px;
+    display: flex; justify-content: center; align-items: center;
+    gap: 12px; font-size: 12px; font-weight: 600; color: #cfe9d7;
+  }
+
+  /* Controls card: สลับเป็นคอลัมน์เดียวและเพิ่มพื้นที่คลิก */
+  .controls-grid{ grid-template-columns: 1fr; }
+  .ctrl{ padding: 12px 14px; }
+  .ctrl .switch{ width: 54px; height: 30px; }
+  .ctrl .switch::after{ width: 22px; height: 22px; }
+}
+
+/* ===== Small phones (≤ 360px): บีบเพิ่มอีกนิด ===== */
+@media (max-width: 360px){
+  .topbar .brand img{ height: 34px; }
+  #deviceSelect{ max-width: 48vw; font-size: 11px; padding: 5px 8px; }
+  .icon-btn{ width: 32px; height: 32px; }
+}
