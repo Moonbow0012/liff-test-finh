@@ -338,7 +338,7 @@ export const diagSecrets = onRequest(
     cors: true,
     secrets: [OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, SERVICE_USERNAME, SERVICE_PASSWORD, OAUTH_TOKEN_URL, NX_GRAPHQL_URL],
   },
-  async (_req: Request, res: Response): Promise<void> => {
+  async (req, res) => {
     const has = (k: string) => Boolean((process.env as any)[k]);
     res.json({
       OAUTH_CLIENT_ID: has("OAUTH_CLIENT_ID"),
@@ -359,7 +359,7 @@ export const diagToken = onRequest(
     cors: true,
     secrets: [OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, SERVICE_USERNAME, SERVICE_PASSWORD, OAUTH_TOKEN_URL],
   },
-  async (_req: Request, res: Response): Promise<void> => {
+  async (req, res) => {
     try {
       const t = await getNxAccessToken();
       const preview = (t.access_token || "").slice(0, 8) + "...";
@@ -378,7 +378,7 @@ export const diagGraphql = onRequest(
     cors: true,
     secrets: [OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, SERVICE_USERNAME, SERVICE_PASSWORD, OAUTH_TOKEN_URL, NX_GRAPHQL_URL],
   },
-  async (req: Request, res: Response): Promise<void> => {
+  async (req, res) => {
     try {
       const { access_token } = await getNxAccessToken();
       const query = (req.body && req.body.query) || "query { __typename }";
@@ -394,7 +394,7 @@ export const diagGraphql = onRequest(
 // -----------------------------------------------------------------------------
 // HTTP: getProgress — JSON only
 // -----------------------------------------------------------------------------
-export const getProgress = onRequest({ cors: true }, async (req: Request, res: Response): Promise<void> => {
+export const getProgress = onRequest({ cors: true }, async (req, res) => {
   try {
     const deviceId = String(req.query.deviceId || "");
     if (!deviceId) { res.status(400).json({ error: "Missing deviceId" }); return; }
@@ -425,7 +425,7 @@ export const recomputeOne = onRequest(
     cors: true,
     secrets: [OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, SERVICE_USERNAME, SERVICE_PASSWORD, OAUTH_TOKEN_URL, NX_GRAPHQL_URL],
   },
-  async (req: Request, res: Response): Promise<void> => {
+  async (req, res) => {
     const deviceId = String(req.query.deviceId || "");
     const dryRun = String(req.query.dryRun || "false").toLowerCase() === "true";
     if (!deviceId) { res.status(400).json({ error: "Missing deviceId" }); return; }
@@ -442,7 +442,7 @@ export const recomputeOne = onRequest(
 // -----------------------------------------------------------------------------
 // HTTP: diagPollStatus
 // -----------------------------------------------------------------------------
-export const diagPollStatus = onRequest({ cors: true }, async (_req: Request, res: Response): Promise<void> => {
+export const diagPollStatus = onRequest({ cors: true }, async (req, res) => {
   try {
     const snap = await STATE_REF.get();
     if (!snap.exists) { res.json({ exists: false }); return; }
@@ -533,7 +533,7 @@ perDevice[deviceId] = {
 // -----------------------------------------------------------------------------
 // DIAG: whoami — ตรวจ service account ที่รันจริง
 // -----------------------------------------------------------------------------
-export const diagWhoami = onRequest({ cors: true }, async (_req: Request, res: Response): Promise<void> => {
+export const diagWhoami = onRequest({ cors: true }, async (req, res) => {
   try {
     const r = await fetch("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email",
       { headers: { "Metadata-Flavor": "Google" } });
@@ -566,5 +566,5 @@ export const devices = onRequest({ cors: true }, async (_req, res) => {
 });
 
 export { trkCreate, trkUpdate, trkGet, lineWebhookTracking } from "./tracking.js";
-export { createOrJoinFarm, myFarm, harvests, pingFirestore } from "./farm.js";
+export { createOrJoinFarm, myFarm, harvests, createHarvest} from './farm';
 

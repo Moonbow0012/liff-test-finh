@@ -1,327 +1,293 @@
-// functions/src/farm.ts
-// Node.js 20, Firebase Functions v2 (asia-southeast1)
-
-import { onRequest } from "firebase-functions/v2/https";
+import { onRequest, HttpsError } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 
-try { admin.initializeApp(); } catch { /* ignore double init */ }
+const _admin: any = admin || {};
+if (!_admin.apps || !_admin.apps.length) {
+  try { admin.initializeApp(); } catch (_e) {}
+}
 const db = admin.firestore();
 
-/* ----------------------------- CORS helpers ----------------------------- */
-const ALLOWED_ORIGINS = new Set<string>([
+/** ---------------- CORS ---------------- */
+const ALLOWED = new Set<string>([
   "https://liff-test-finh.vercel.app",
-  "http://localhost:3000",
-  "http://localhost:5173",
+  "http://localhost:3000","http://127.0.0.1:3000",
+  "http://localhost:5173","http://127.0.0.1:5173",
 ]);
-
-function setCors(req: any, res: any) {
-  const origin = req.headers.origin as string | undefined;
-  // โหมดปลอดภัย-เปิด (เพราะไม่ใช้ credentials). ถ้าจะล็อกจริง ๆ ค่อยเปิดบรรทัด has(origin)
-  res.set("Access-Control-Allow-Origin", origin && ALLOWED_ORIGINS.has(origin) ? origin : "*");
-  res.set("Vary", "Origin");
-  res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  res.set("Access-Control-Allow-Headers", "Content-Type, x-line-id-token, x-line-access-token, authorization, x-dev-uid");
-  res.set("Access-Control-Max-Age", "86400");
-  res.set("X-Finh-Version", "farm.ts@" + new Date().toISOString());
-}
 function withCors(
   handler: (req: any, res: any) => Promise<void> | void
 ) {
   return async (req: any, res: any) => {
-    setCors(req, res);
+    const origin = req.headers.origin as string | undefined;
+    if (origin && ALLOWED.has(origin)) res.set("Access-Control-Allow-Origin", origin);
+    res.set("Vary", "Origin");
+    res.set("Access-Control-Allow-Headers", "Content-Type, x-dev-uid");
+    res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     if (req.method === "OPTIONS") { res.status(204).send(""); return; }
-    await handler(req, res);
+    return handler(req, res);
   };
 }
 
-/* --------------- Helpers --------------- */
-function tsToIso(x: any): string | null {
-  if (!x) return null;
-  try {
-    if (typeof x.toDate === "function") return x.toDate().toISOString();
-    if (typeof x._seconds === "number") {
-      const ms = x._seconds * 1000 + Math.floor((x._nanoseconds || 0) / 1e6);
-      return new Date(ms).toISOString();
-    }
-    if (typeof x === "string") return x;
-    return null;
-  } catch { return null; }
-}
-
-// Auth (ช่วงแรกใช้ header ชื่อ x-dev-uid; ภายหลังย้ายเป็น verify LINE ID token/Firebase)
+/** -------------- Auth helper -------------- */
 async function requireUID(req: any): Promise<string> {
   const dev = req.headers["x-dev-uid"];
   if (typeof dev === "string" && dev.trim()) return dev.trim();
+  // NOTE: keep fallback for onboarding
   return "dev-user";
 }
 
-async function getMyFarmFor(uid: string) {
-  // ใช้ members subcollection ใต้ farms
-  const mem = await db.collectionGroup("members").where("uid", "==", uid).limit(1).get();
-  if (mem.empty) return null;
-  const farmRef = mem.docs[0].ref.parent.parent!;
-  const doc = await farmRef.get();
-  const raw = doc.data() || {};
-  const out: any = { id: farmRef.id, ...raw };
-  out.createdAtIso = tsToIso(raw.createdAt);
-  out.updatedAtIso = tsToIso(raw.updatedAt);
-  delete out.createdAt; delete out.updatedAt;
+/** -------------- ID helpers -------------- */
+const PAD2 = (n:number) => n.toString().padStart(2, "0");
+
+async function nextCounter(farmId: string, key: string): Promise<number> {
+  const ref = db.doc(`farms/${farmId}/meta/counters`);
+  let out = 0;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const data = (snap.exists ? (snap.data() as any) : {});
+    const cur = Number(data[key] || 0) + 1;
+    tx.set(ref, { [key]: cur }, { merge: true });
+    out = cur;
+  });
   return out;
 }
 
-async function findFarmIdByUser(uid: string): Promise<string | null> {
-  const mapDoc = await db.collection('user_farms').doc(uid).get();
-  const mapData = mapDoc.data();
-  if (mapDoc.exists && mapData?.farmId) return String(mapData.farmId);
-
-  // fallback: collectionGroup แต่กลืน error index
-  try {
-    const mem = await db.collectionGroup('members').where('uid', '==', uid).limit(1).get();
-    if (!mem.empty) return mem.docs[0].ref.parent.parent!.id;
-  } catch (e: any) {
-    if (String(e?.code) !== '9' && !/FAILED_PRECONDITION/i.test(String(e?.message||''))) throw e;
-  }
-  return null;
+/** -------------- Ensure mapping user_farms -------------- */
+async function linkUserFarm(uid: string, farmId: string) {
+  await db.collection("user_farms").doc(uid).set({
+    uid,
+    farmId,
+    linkedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
 }
 
-async function getFarmDocOut(farmId: string) {
-  const doc = await db.collection('farms').doc(farmId).get();
-  if (!doc.exists) return null;
-  const raw = doc.data() || {};
-  const out: any = { id: doc.id, ...raw };
-  out.createdAtIso = tsToIso(raw.createdAt);
-  out.updatedAtIso = tsToIso(raw.updatedAt);
-  delete out.createdAt; delete out.updatedAt;
-  return out;
-}
-
-/* -------------------------- POST /createOrJoinFarm -------------------------- */
-export const createOrJoinFarm = onRequest(
-  { region: "asia-southeast1" },
-  withCors(async (req, res) => {
-    if (req.method !== "POST") {
-      res.status(405).json({ error: "method not allowed" });
-      return;
-    }
-    try {
-      const uid = String(req.get("x-dev-uid") || "").trim() || "dev-user";
-      const { name, lat, lng, address } = (req.body || {});
-      const LAT = Number(lat), LNG = Number(lng);
-      if (!name || !Number.isFinite(LAT) || !Number.isFinite(LNG)) {
-        res.status(400).json({ error: "invalid name/lat/lng", got: { name, lat, lng } });
-        return;
-      }
-
-      // มีฟาร์มอยู่แล้ว? คืนกลับเลย
-      const existFarmId = await findFarmIdByUser(uid);
-      if (existFarmId) {
-        const farmOut = await getFarmDocOut(existFarmId);
-        res.json({ ok: true, farmId: existFarmId, farm: farmOut, scaffold: false });
-        return;
-      }
-
-      const now = admin.firestore.FieldValue.serverTimestamp();
-      const farmRef = db.collection("farms").doc();
-      const farmId = farmRef.id;
-      const batch = db.batch();
-
-      // farms/{farmId}
-      batch.set(farmRef, {
-        name: String(name).trim(),
-        location: { lat: LAT, lng: LNG, address: address ?? null },
-        createdBy: uid,
-        createdAt: now,
-        updatedAt: now,
-        scaffoldVersion: 2,        // ← บอกว่าเป็น schema ใหม่ (nested)
-      }, { merge: true });
-
-      // farms/{farmId}/members/{uid}
-      batch.set(farmRef.collection("members").doc(uid), {
-        uid, role: "owner", joinedAt: now, status: "active",
-      }, { merge: true });
-
-      // user_farms/{uid}  (index lookup)
-      batch.set(db.collection("user_farms").doc(uid), {
-        farmId, joinedAt: now,
-      }, { merge: true });
-
-      // ✅ scaffold: ทุกอย่าง “ใต้ฟาร์ม”
-      const pondRef = farmRef.collection("ponds").doc();
-      batch.set(pondRef, {
-        code: "POND-A",
-        name: "บ่อ A",
-        areaM2: null,
-        status: "active",
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      const trayRef = farmRef.collection("trays").doc();
-      batch.set(trayRef, {
-        code: "TRAY-01",
-        pondId: pondRef.id,
-        capacity: null,
-        status: "idle",
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      const cropRef = farmRef.collection("crops").doc();
-      batch.set(cropRef, {
-        trayId: trayRef.id,
-        species: "ผำ",
-        plantedAt: null,
-        status: "idle",
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      const harvestRef = farmRef.collection("harvests").doc();
-      batch.set(harvestRef, {
-        date: now,                 // ฝั่งเว็บใช้ฟิลด์ 'date'
-        weightKg: null,
-        moisture: null,
-        qcResult: null,
-        note: "Initial scaffold",
-        operatorUid: uid,
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      // (ถ้ามี devices/progress ก็เพิ่ม subcollection farms/{farmId}/devices ได้ใน batch นี้เช่นกัน)
-
-      await batch.commit();
-
-      const farmOut = await getFarmDocOut(farmId);
-      res.json({
-        ok: true,
-        farmId,
-        farm: farmOut,
-        scaffold: {
-          pondId: pondRef.id,
-          trayId: trayRef.id,
-          cropId: cropRef.id,
-          harvestId: harvestRef.id
-        }
-      });
-    } catch (e: any) {
-      const code = e?.code || "";
-      const msg  = e?.message || String(e);
-      const isPrecond = code === 9 || /FAILED_PRECONDITION/i.test(msg);
-      res.status(isPrecond ? 412 : 400).json({ error: msg, code });
-    }
-  })
-);
-
-/* ------------------------------ GET /myFarm ------------------------------ */
+/** -------------- myFarm (exact) -------------- */
 export const myFarm = onRequest(
   { region: "asia-southeast1" },
   withCors(async (req, res) => {
     try {
-      const uid = String(req.get("x-dev-uid") || "").trim() || "dev-user";
-      const farmId = await findFarmIdByUser(uid);
-      const farm = farmId ? await getFarmDocOut(farmId) : null;
-      res.json({ ok: true, farm: farm || null });
-    } catch (e: any) {
-      res.json({ ok: false, farm: null, error: e?.message || String(e) });
+      const uid = await requireUID(req);
+      // lookup by mapping first
+      const mapDoc = await db.collection("user_farms").doc(uid).get();
+      if (mapDoc.exists) {
+        const farmId = (mapDoc.data() as any).farmId as string;
+        if (farmId) {
+          const f = await db.doc(`farms/${farmId}`).get();
+          res.json({ ok: true, farm: f.exists ? { id: farmId, ...(f.data()||{}) } : null });
+          return;
+        }
+      }
+      // fallback search collectionGroup members
+      const cg = await db.collectionGroup("members").where("uid","==",uid).limit(1).get();
+      if (!cg.empty) {
+        const farmRef = cg.docs[0].ref.parent.parent!;
+        const f = await farmRef.get();
+        res.json({ ok: true, farm: f.exists ? { id: farmRef.id, ...(f.data()||{}) } : null });
+        return;
+      }
+      res.json({ ok: true, farm: null });
+    } catch (e:any) {
+      console.error("[myFarm] error", e);
+      res.json({ ok: false, error: e?.message || String(e), farm: null });
     }
   })
 );
 
-/* ------------------------- GET /harvests?farmId=... ------------------------- */
-/**
- * โครงปัจจุบันใช้ path แบบ nested:
- *   farms/{farmId}/harvests
- *   farms/{farmId}/harvest_crops
- *   farms/{farmId}/crops, trays, ponds
- * ถ้าย้ายเป็น table-first (top-level) ให้ปรับ query ให้เหมาะสมในอนาคต
- */
-export const harvests = onRequest(
+/** -------------- createOrJoinFarm -------------- */
+export const createOrJoinFarm = onRequest(
   { region: "asia-southeast1" },
   withCors(async (req, res) => {
     try {
-      const farmId = String(req.query.farmId || "").trim();
-      const limit = Math.min(Number(req.query.limit || 50), 200);
-      if (!farmId) { res.status(400).json({ error: "missing farmId" }); return; }
+      if (req.method !== "POST") { res.status(405).json({ error: "method not allowed" }); return; }
+      const uid = await requireUID(req);
+      const b = (req.body || {}) as any;
+      const name = (b.name ?? "").toString().trim();
+      const lat  = typeof b.lat === "number" ? b.lat : Number(b.lat);
+      const lng  = typeof b.lng === "number" ? b.lng : Number(b.lng);
+      const address = b.address ? String(b.address) : null;
 
-      const snap = await db.collection("farms").doc(farmId)
-        .collection("harvests")
-        .orderBy("date", "desc")
-        .limit(limit)
-        .get();
-
-      const items: any[] = [];
-      for (const doc of snap.docs) {
-        const d = doc.data() || {};
-        items.push({
-          id: doc.id,
-          date: tsToIso(d.date),
-          weightKg: (d.weightKg === undefined || d.weightKg === null) ? null : Number(d.weightKg),
-          moisture: (d.moisture === undefined || d.moisture === null) ? null : Number(d.moisture),
-          qcResult: (d.qcResult === undefined) ? null : d.qcResult,
-          from: null
-        });
+      if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+        res.status(400).json({ error: "invalid name/lat/lng" }); return;
       }
-      res.json({ ok: true, items });
-    } catch (e: any) {
+
+      // check existing
+      const existing = await db.collection("user_farms").doc(uid).get();
+      if (existing.exists && (existing.data() as any).farmId) {
+        const farmId = (existing.data() as any).farmId as string;
+        const snap = await db.doc(`farms/${farmId}`).get();
+        res.json({ ok: true, farmId, farm: { id: farmId, ...(snap.data()||{}) } });
+        return;
+      }
+
+      // create farm
+      const farmRef = db.collection("farms").doc();
+      const now = admin.firestore.FieldValue.serverTimestamp();
+      await farmRef.set({
+        name,
+        location: { lat, lng, address },
+        createdAt: now,
+        updatedAt: now,
+        createdBy: uid,
+      });
+
+      // member
+      await farmRef.collection("members").doc(uid).set({
+        uid, role: "owner", joinedAt: now
+      });
+
+      // mapping
+      await linkUserFarm(uid, farmRef.id);
+
+      // -------- scaffold (1 each) following Excel schema --------
+      const sidNum = await nextCounter(farmRef.id, "site");
+      const sid = `S${PAD2(sidNum)}`;
+      await farmRef.collection("sites").doc(sid).set({
+        sid,
+        sname: "Site 1",
+        location: address ?? null,        // Excel: string (url); seed as address/null
+        area_m2: null,
+        sum_capacity: null,
+        wtype: null,
+      });
+
+      const pidNum = await nextCounter(farmRef.id, "pond");
+      const pid = `P${PAD2(pidNum)}`;
+      await farmRef.collection("ponds").doc(pid).set({
+        pid,
+        pname: "Pond 1",
+        sid,
+        sum_capacity_kg: null,
+      });
+
+      const tidNum = await nextCounter(farmRef.id, "tray");
+      const tid = `T${PAD2(tidNum)}`;
+      await farmRef.collection("trays").doc(tid).set({
+        tid,
+        name: "Tray 1",
+        pid,
+        sid,
+        capacity_kg: null,
+        sum_capacity: null,
+        sum_havest: null,
+        act_harvest: null,
+      });
+
+      const cidNum = await nextCounter(farmRef.id, "crop");
+      const cid = `C${PAD2(cidNum)}`;
+      await farmRef.collection("crops").doc(cid).set({
+        cid,
+        cname: "Crop 1",
+        tid,
+        pid,
+        sid,
+        start_date: null,
+        end_date: null,
+        in_capacity_kg: null,
+        cap_factor: null,
+        out_capacity_kg: null,
+      });
+
+      // harvest_crops: intentionally empty on seed
+
+      const snap = await farmRef.get();
+      res.json({ ok: true, farmId: farmRef.id, farm: { id: farmRef.id, ...(snap.data()||{}) } });
+    } catch (e:any) {
+      console.error("[createOrJoinFarm] error", e);
       res.status(400).json({ error: e?.message || String(e) });
     }
   })
 );
 
-/* ------------------------------ GET /pingFirestore ------------------------------ */
-export const pingFirestore = onRequest(
+/** -------------- createHarvest (schema-exact) -------------- */
+export const createHarvest = onRequest(
   { region: "asia-southeast1" },
-  withCors(async (_req, res) => {
+  withCors( async (req, res) => {
     try {
-      const ref = db.collection("_diagnostics").doc("ping");
-      await ref.set({ at: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
-      const snap = await ref.get();
-      res.json({ ok: true, atIso: tsToIso(snap.get("at")) });
-    } catch (e: any) {
-      res.status(500).json({ error: e?.message || String(e) });
-    }
-  })
-);
+      if (req.method !== "POST") { res.status(405).json({ error: "method not allowed" }); return; }
+      await requireUID(req);
 
-/* ------------------------------ GET /devices ------------------------------ */
-/**
- * ส่งรายการอุปกรณ์สำหรับ dropdown บนหน้าเว็บ
- * 1) พยายามอ่านจาก Firestore collection('devices')
- * 2) ถ้าไม่มี/ล้มเหลว fallback ไป Proxy Cloud Run (เดิม)
- */
-const PROGRESS_PROXY_URL = "https://getprogress-iyipepekja-as.a.run.app/api/devices";
+      // body must match Excel schema
+      const b = (req.body || {}) as any;
+      const farmId = String(b.farmId || "");
+      if (!farmId) { res.status(400).json({ error: "missing farmId" }); return; }
 
-export const devices = onRequest(
-  { region: "asia-southeast1" },
-  withCors(async (_req, res) => {
-    try {
-      const snap = await db.collection("devices").get();
-      if (!snap.empty) {
-        const devices = snap.docs.map(d => {
-          const v = d.data() || {};
-          return {
-            deviceId: d.id,                       // Firestore docId
-            name: v.name || v.deviceId || v.nexiiotDeviceId || d.id,
-            nexiiotDeviceId: v.nexiiotDeviceId || null,
-            farmId: v.farmId || null,
-          };
-        });
-        res.json({ devices });
-        return;
+      const sidIn = String(b.sid || "").trim();
+      const pidIn = String(b.pid || "").trim();
+
+      // tids can be string or array; normalize to array of strings
+      let tidsArr: string[] = [];
+      if (Array.isArray(b.tids)) {
+        tidsArr = b.tids.map((x:any)=>String(x).trim()).filter(Boolean);
+      } else if (b.tids != null) {
+        tidsArr = [ String(b.tids).trim() ].filter(Boolean);
       }
-    } catch {
-      // ignore and fallback
-    }
 
-    // fallback → proxy Cloud Run (เดิม)
-    try {
-      const r = await fetch(PROGRESS_PROXY_URL, { headers: { "Content-Type": "application/json" } as any });
-      const text = await r.text();
-      try { res.status(r.status).json(JSON.parse(text)); }
-      catch { res.status(r.status).send(text); }
-    } catch (e: any) {
-      res.status(500).json({ error: "devices_unavailable", detail: String(e?.message || e) });
+      // harvest_date: allow ISO string or number (ms)
+      const hdRaw = b.harvest_date;
+      let harvest_date: FirebaseFirestore.Timestamp | null = null;
+      if (typeof hdRaw === "string" && hdRaw.trim()) {
+        const d = new Date(hdRaw);
+        if (!isNaN(d.getTime())) harvest_date = admin.firestore.Timestamp.fromDate(d);
+      } else if (typeof hdRaw === "number" && isFinite(hdRaw)) {
+        harvest_date = admin.firestore.Timestamp.fromMillis(hdRaw);
+      }
+      if (!harvest_date) {
+        res.status(400).json({ error: "invalid harvest_date" }); return;
+      }
+
+      const capacity = (b.harvesrt_capacity != null) ? Number(b.harvesrt_capacity) : NaN;
+      if (!isFinite(capacity)) {
+        res.status(400).json({ error: "invalid harvesrt_capacity" }); return;
+      }
+
+      // generate HID
+      const hnum = await nextCounter(farmId, "harvest");
+      const hid = `H${PAD2(hnum)}`;
+
+      const doc = {
+        hid,
+        sid: sidIn || null,
+        pid: pidIn || null,
+        tids: tidsArr,
+        harvest_date,
+        harvesrt_capacity: capacity,
+      };
+      await db.doc(`farms/${farmId}/harvests/${hid}`).set(doc);
+
+      res.json({ ok:true, hid, item: doc });
+    } catch (e:any) {
+      console.error("[createHarvest] error", e);
+      res.status(400).json({ error: e?.message || String(e) });
     }
   })
 );
+
+/** -------------- list harvests (schema-exact) -------------- */
+export const harvests = onRequest(
+  { region: "asia-southeast1" },
+  withCors( async (req, res) => {
+    try {
+      await requireUID(req);
+      const farmId = String(req.query.farmId || "");
+      const limit = Math.min(200, Number(req.query.limit || 50));
+      if (!farmId) { res.status(400).json({ error: "missing farmId" }); return; }
+
+      const hs = await db.collection(`farms/${farmId}/harvests`).orderBy("harvest_date","desc").limit(limit).get();
+      const items = hs.docs.map(d => {
+        const x = (d.data() as any) || {};
+        return {
+          hid: x.hid ?? d.id,
+          tids: x.tids ?? [],
+          pid: x.pid ?? null,
+          sid: x.sid ?? null,
+          harvest_date: x.harvest_date || null,
+          harvesrt_capacity: x.harvesrt_capacity ?? null,
+        };
+      });
+      res.json({ ok:true, items });
+    } catch (e:any) {
+      console.error("[harvests] error", e);
+      res.status(400).json({ error: e?.message || String(e) });
+    }
+  })
+);
+
