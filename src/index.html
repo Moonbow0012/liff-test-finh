@@ -686,7 +686,14 @@ async function ensureFarmOnce(){
     hideFarmModal();
     return true;
   }
+
+  // 3) ยังไม่มี → เปิด modal ให้ตั้งค่า (← จุดที่ของเดิม “ขาด”)
+  await waitForMapsReady();
+  initMapOnce();
+  showFarmModal();
+  return false;
 }
+
 
   /* Harvest Tracking */
   async function fetchHarvests(limit=50){
@@ -866,6 +873,7 @@ document.addEventListener('click', (e)=>{
       await ensureLogin();
       await fillLineUser(); 
       await ensureFarmOnce();
+      bindFarmSave();
 
       const qs = new URLSearchParams(location.search);
       if (qs.get('code') || qs.get('liffRedirectUri')) history.replaceState({}, '', stripRedirectUri());
@@ -967,13 +975,6 @@ function bindFarmSave(){
     }
   };
 }
-
-// … ใน DOMContentLoaded flow เดิมของคุณ …
-await liff.init({ liffId: LIFF_ID });
-await ensureLogin();
-await fillLineUser();
-await ensureFarmOnce();    // ถ้ายังไม่มีฟาร์ม จะโชว์ modal
-bindFarmSave();            // <-- เรียกผูกปุ่ม **หลัง** ensureFarmOnce
   });
 })();
 
