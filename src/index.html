@@ -368,14 +368,18 @@ if (refreshBtnEl) refreshBtnEl.onclick = refreshAllWithSpin;
   }
 
   /* fetch helpers */
-  async function authedGet(url) {
-    const r = await fetch(toApiUrl(url), { headers: buildAuthHeaders() });
-    const t = await r.text();
-    let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
+async function authedGet(url, opts={ allow404:false }) {
+  const r = await fetch(toApiUrl(url), { headers: buildAuthHeaders() });
+  const t = await r.text();
+  let j; try { j = JSON.parse(t); } catch { if (opts.allow404 && r.status===404) return null; throw new Error(`HTTP ${r.status}: ${t}`); }
+  if (r.status === 404 && (opts.allow404 || j?.error === 'NO_FARM')) return null;
   if (!r.ok || j.errors || j.error) {
-  const msg = j?.message ? `${j.error||('HTTP '+r.status)}: ${j.message}` : (j.error || t);
-  throw new Error(msg);
-}
+    const msg = j?.message ? `${j.error||('HTTP '+r.status)}: ${j.message}` : (j.error || t);
+    throw new Error(msg);
+  }
+  return j;
+
+  const mf = await authedGet('/myFarm', { allow404: true });
 
   }
   async function authedPost(url, body) {
@@ -390,6 +394,7 @@ if (refreshBtnEl) refreshBtnEl.onclick = refreshAllWithSpin;
   const msg = j?.message ? `${j.error||('HTTP '+r.status)}: ${j.message}` : (j.error || t);
   throw new Error(msg);
 }
+return j;
 
   }
   window.authedGet = authedGet;
@@ -879,7 +884,6 @@ document.addEventListener('click', (e)=>{
       await liff.init({ liffId: LIFF_ID });
       await ensureLogin();
       await ensureFarmOnce();
-      await fillLineUser();
 
       const qs = new URLSearchParams(location.search);
       if (qs.get('code') || qs.get('liffRedirectUri')) history.replaceState({}, '', stripRedirectUri());
