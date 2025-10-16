@@ -317,7 +317,7 @@
   }
 
 function getStableUid(){
-  // 1) ถ้า LIFF พร้อม และมี sub -> ใช้อันนี้เป็นหลัก และ sync ลง localStorage
+  // ถ้า LIFF พร้อม ให้ใช้ sub เป็นหลัก แล้ว sync ลง localStorage
   try {
     const sub = window.liff?.getDecodedIDToken?.()?.sub;
     const stored = localStorage.getItem('finh_uid');
@@ -325,12 +325,12 @@ function getStableUid(){
       if (sub !== stored) localStorage.setItem('finh_uid', sub);
       return sub;
     }
-    if (stored) return stored; // ยังไม่มี sub (ยังไม่ init?) ก็ใช้ของเก่าไปก่อน
+    if (stored) return stored; // ยังไม่ init ก็ใช้ของเดิมไปก่อน
   } catch {}
-  // 2) fallback ครั้งแรกเท่านั้น
+  // fallback ครั้งแรกเท่านั้น (dev เท่านั้น)
   const fallback = 'dev-user';
-  localStorage.setItem('finh_uid', fallback);
-  return fallback;
+  if (!localStorage.getItem('finh_uid')) localStorage.setItem('finh_uid', fallback);
+  return localStorage.getItem('finh_uid') || fallback;
 }
 
 function buildAuthHeaders(){
@@ -343,8 +343,8 @@ function buildAuthHeaders(){
   if (idToken && idToken.includes('.')) h['x-line-id-token'] = idToken;
   else if (access) h['x-line-access-token'] = access;
 
-  h['x-dev-uid'] = getStableUid();     // backend ใช้ค่านี้หา member
-  if (sub) h['x-line-user-id'] = sub;  // เผื่อ backend รองรับ header นี้ด้วย
+  h['x-dev-uid'] = getStableUid();    // backend ใช้ค่านี้ lookup members
+  if (sub) h['x-line-user-id'] = sub; // เผื่อรองรับ header นี้ด้วย
 
   return h;
 }
@@ -642,13 +642,18 @@ ctx.fillText(`Temp ${Math.round(tMin)}–${Math.round(tMax)}°C`, pad.l + iw*0.7
 async function getMyFarm(){
   try {
     const r = await authedGet('/tracking/myFarm?soft=1', { allow404: true });
+    console.debug('[getMyFarm] resp =', r);
     if (!r || r.hasFarm === false) return null;
+
     const id = r?.farmId || r?.id || r?.farm?.id || r?.farm?.farmId || localStorage.getItem('finh_farm_id');
     if (!id) return null;
     const farm = r?.farm ? { id, ...r.farm } : { id, name: r?.name || r?.farmName, location: r?.location };
     localStorage.setItem('finh_farm_id', id);
     return farm;
-  } catch { return null; }
+  } catch (e) {
+    console.warn('[getMyFarm] error', e);
+    return null;
+  }
 }
 
 function showFarmModal(){ const m = document.getElementById('farmModal'); if (m) m.hidden = false; }
@@ -974,9 +979,7 @@ function bindFarmSave(){
 
 </script>
 
-<!-- callback เมื่อสคริปต์ Maps โหลดเสร็จ -->
 <script> window.__gmapsReady = () => window.dispatchEvent(new Event('gmaps-ready')); </script>
 <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA2Gx7cUFVTHVR65w371mqgkUCWNlO1SgY&libraries=places&loading=async&callback=__gmapsReady"></script>
 </body>
 </html>
-

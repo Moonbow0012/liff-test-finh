@@ -7,7 +7,7 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { initializeApp } from "firebase-admin/app";
-import { getFirestore, FieldValue, Timestamp, DocumentReference } from "firebase-admin/firestore";
+import { getFirestore, FieldValue, Timestamp, DocumentReference, FieldPath } from "firebase-admin/firestore";
 
 setGlobalOptions({ region: "asia-southeast1", memory: "256MiB", timeoutSeconds: 60, maxInstances: 10 });
 
@@ -67,13 +67,25 @@ async function userIsMember(uid: string, farmId: string): Promise<boolean> {
   const snap = await memberRef(farmId, uid).get();
   return snap.exists && snap.get("role") !== "left";
 }
+
 async function findFirstFarmForUser(uid: string): Promise<{ farmId: string } | null> {
-  try {
-    const q = await db.collectionGroup("members").where("userId", "==", uid).limit(1).get();
-    if (q.empty) return null;
+  // 1) ปกติ: ฟิลด์ userId
+  let q = await db.collectionGroup("members").where("userId", "==", uid).limit(1).get();
+  if (!q.empty) {
     const farmId = q.docs[0].ref.parent.parent?.id;
     return farmId ? { farmId } : null;
-  } catch { return null; }
+  }
+  // 2) เผื่อกรณี doc id = uid
+  q = await db.collectionGroup("members").where(FieldPath.documentId(), "==", uid).limit(1).get();
+  if (!q.empty) {
+    const farmId = q.docs[0].ref.parent.parent?.id;
+    return farmId ? { farmId } : null;
+  }
+  // 3) ฟอลแบ็ก: คนสร้างฟาร์ม
+  const q2 = await db.collection("farms").where("createdBy", "==", uid).orderBy("createdAt", "desc").limit(1).get();
+  if (!q2.empty) return { farmId: q2.docs[0].id };
+
+  return null;
 }
 
 // ---------- FLAT seed (no nesting, no settings) ----------
@@ -146,17 +158,28 @@ export const createOrJoinFarm = onRequest(withCors(async (req: any, res: any) =>
 
 export const myFarm = onRequest(withCors(async (req, res) => {
   if (req.method !== "GET") { res.status(405).json({ error: "METHOD_NOT_ALLOWED" }); return; }
-  const uid = requireUid(req);
+
+  let uid = "";
+  try { uid = requireUid(req); } 
+  catch { res.status(401).json({ error: "UNAUTHORIZED_UID_MISSING" }); return; }
+
   const soft = String(req.query.soft || "") === "1";
 
   const found = await findFirstFarmForUser(uid);
-  if (!found) { soft ? res.json({ hasFarm:false }) : res.status(404).json({ error:"NO_FARM" }); return; }
+  if (!found) {
+    if (soft) { res.json({ hasFarm: false, uid }); return; }
+    res.status(404).json({ error: "NO_FARM", uid }); return;
+  }
 
   const fSnap = await farmRef(found.farmId).get();
-  if (!fSnap.exists) { soft ? res.json({ hasFarm:false }) : res.status(404).json({ error:"FARM_NOT_FOUND" }); return; }
+  if (!fSnap.exists) {
+    if (soft) { res.json({ hasFarm: false, uid }); return; }
+    res.status(404).json({ error: "FARM_NOT_FOUND", uid }); return;
+  }
 
-  res.json({ hasFarm:true, farmId: found.farmId, farm: fSnap.data() });
+  res.json({ hasFarm: true, uid, farmId: found.farmId, farm: fSnap.data() });
 }));
+
 
 async function getLatestHarvestForTray(farmId: string, tid: string) {
   const q = await db
