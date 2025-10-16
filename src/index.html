@@ -317,25 +317,35 @@
   }
 
 function getStableUid(){
-  let uid = localStorage.getItem('finh_uid');
-  if (uid) return uid;
+  // 1) ถ้า LIFF พร้อม และมี sub -> ใช้อันนี้เป็นหลัก และ sync ลง localStorage
   try {
-    const d = window.liff?.getDecodedIDToken?.();
-    uid = d?.sub || d?.amr?.[0];
+    const sub = window.liff?.getDecodedIDToken?.()?.sub;
+    const stored = localStorage.getItem('finh_uid');
+    if (sub) {
+      if (sub !== stored) localStorage.setItem('finh_uid', sub);
+      return sub;
+    }
+    if (stored) return stored; // ยังไม่มี sub (ยังไม่ init?) ก็ใช้ของเก่าไปก่อน
   } catch {}
-  if (!uid) uid = 'dev-user';
-  localStorage.setItem('finh_uid', uid);
-  return uid;
+  // 2) fallback ครั้งแรกเท่านั้น
+  const fallback = 'dev-user';
+  localStorage.setItem('finh_uid', fallback);
+  return fallback;
 }
 
 function buildAuthHeaders(){
   const h = { 'Content-Type':'application/json' };
-  let idToken = '', access = '';
+  let idToken = '', access = '', sub = '';
   try { idToken = sessionStorage.getItem('line_id_token') || (window.liff?.getIDToken?.() || ''); } catch {}
   try { access  = sessionStorage.getItem('line_access_token') || (window.liff?.getAccessToken?.() || ''); } catch {}
+  try { sub     = window.liff?.getDecodedIDToken?.()?.sub || ''; } catch {}
+
   if (idToken && idToken.includes('.')) h['x-line-id-token'] = idToken;
   else if (access) h['x-line-access-token'] = access;
-  h['x-dev-uid'] = getStableUid();
+
+  h['x-dev-uid'] = getStableUid();     // backend ใช้ค่านี้หา member
+  if (sub) h['x-line-user-id'] = sub;  // เผื่อ backend รองรับ header นี้ด้วย
+
   return h;
 }
 
@@ -850,18 +860,21 @@ document.addEventListener('click', (e)=>{
   /* Boot */
   window.addEventListener('DOMContentLoaded', async () => {
     try {
-      await liff.init({ liffId: LIFF_ID });
-      await ensureLogin();
-      await fillLineUser(); 
-      await ensureFarmOnce();
-      bindFarmSave();
+await liff.init({ liffId: LIFF_ID });
+await ensureLogin();
 
-      const qs = new URLSearchParams(location.search);
-      if (qs.get('code') || qs.get('liffRedirectUri')) history.replaceState({}, '', stripRedirectUri());
+// เก็บ token + sync uid ให้เร็วที่สุด (ก่อน call API ใด ๆ)
+const idToken = liff.getIDToken();
+const accessToken = liff.getAccessToken();
+if (idToken)    sessionStorage.setItem('line_id_token', idToken);
+if (accessToken)sessionStorage.setItem('line_access_token', accessToken);
+const decoded = liff.getDecodedIDToken?.();
+if (decoded?.sub) localStorage.setItem('finh_uid', decoded.sub);
 
-      const idToken = liff.getIDToken(); const accessToken = liff.getAccessToken();
-      if (idToken) sessionStorage.setItem('line_id_token', idToken);
-      if (accessToken) sessionStorage.setItem('line_access_token', accessToken);
+await fillLineUser();
+
+const hasFarm = await ensureFarmOnce();  // ตอนนี้จะใช้ uid LINE จริงแล้ว
+bindFarmSave();
 
       const sel = $('deviceSelect');
 
