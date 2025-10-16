@@ -315,21 +315,6 @@
     else liff.login({ withLoginOnExternalBrowser:true, redirectUri });
     return new Promise(()=>{});
   }
-  
-  try {
-  const prof = await liff.getProfile();
-  const name = prof?.displayName || 'LINE User';
-  if (document.getElementById('lineName')) document.getElementById('lineName').textContent = name;
-  if (document.getElementById('lineUid') && prof?.userId) {
-    document.getElementById('lineUid').textContent = prof.userId;
-    document.getElementById('lineUid').hidden = false;
-  }
-  if (document.getElementById('lineAvatar') && prof?.pictureUrl) {
-    const img = document.getElementById('lineAvatar');
-    img.src = prof.pictureUrl;
-    img.hidden = false;
-  }
-} catch {}
 
 function getStableUid(){
   let uid = localStorage.getItem('finh_uid');
@@ -660,21 +645,17 @@ function showFarmModal(){ const m = document.getElementById('farmModal'); if (m)
 function hideFarmModal(){ const m = document.getElementById('farmModal'); if (m) m.hidden = true; }
 
 async function ensureFarmOnce(){
-  // 1) ถ้ามี cache ไว้แล้ว ให้เชื่อก่อนเพื่อไม่ให้ modal โผล่
+  // 1) ถ้ามี cache farmId แล้ว ให้เชื่อก่อน เพื่อไม่ให้ modal โผล่
   const cachedId = localStorage.getItem('finh_farm_id');
   if (!FORCE_SETUP && cachedId){
-    currentFarm = { id: cachedId };
+    window.currentFarm = { id: cachedId };
     hideFarmModal();
 
     // ยืนยันกับเซิร์ฟเวอร์เบื้องหลัง
     getMyFarm().then(f => {
-      if (f) { currentFarm = f; }
-      else {
-        // cache ไม่จริง ลบทิ้งแล้วค่อยแสดง modal
-        localStorage.removeItem('finh_farm_id');
-        showFarmModal();
-      }
-    }).catch(()=>{ /* เงียบไว้ ไม่ให้กวน UI */ });
+      if (f) { window.currentFarm = f; }
+      else { localStorage.removeItem('finh_farm_id'); showFarmModal(); }
+    }).catch(()=>{});
 
     return true;
   }
@@ -682,12 +663,12 @@ async function ensureFarmOnce(){
   // 2) ไม่มี cache → ถาม server
   const fromServer = await getMyFarm();
   if (fromServer && !FORCE_SETUP){
-    currentFarm = fromServer;
+    window.currentFarm = fromServer;
     hideFarmModal();
     return true;
   }
 
-  // 3) ยังไม่มี → เปิด modal ให้ตั้งค่า (← จุดที่ของเดิม “ขาด”)
+  // 3) ยังไม่มี → เปิด modal ให้ตั้งค่า
   await waitForMapsReady();
   initMapOnce();
   showFarmModal();
@@ -911,7 +892,7 @@ if (sel){
   }
 }
 
-      async function refreshAll(){
+      window.refreshAll = async function refreshAll(){
         const sel = document.getElementById('deviceSelect');
         const docId = (sel && sel.value) || localStorage.getItem('deviceId');
         if (!docId) return;
@@ -963,18 +944,18 @@ function bindFarmSave(){
       const created = await authedPost('/tracking/createOrJoinFarm', { name, lat, lng, address });
       const newId = created?.farmId || created?.farm?.id;
       if (newId) localStorage.setItem('finh_farm_id', newId);
-      // อัปเดต state แล้วซ่อน modal
       window.currentFarm = created?.farm || { id: newId, name, location: { lat, lng, address } };
       document.getElementById('farmModal').hidden = true;
 
-      // โหลดข้อมูลอุปกรณ์/KPI/harvest ใหม่ให้ครบ
-      await refreshAll();
+      // เรียก global เพื่อโหลด devices/KPI/harvest ใหม่
+      await window.refreshAll();
     }catch(e){
       console.error('[createOrJoinFarm] failed', e);
       alert(`สร้างฟาร์มไม่สำเร็จ: ${e?.message || e}`);
     }
   };
 }
+
   });
 })();
 
