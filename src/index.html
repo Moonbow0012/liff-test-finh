@@ -315,22 +315,7 @@
     else liff.login({ withLoginOnExternalBrowser:true, redirectUri });
     return new Promise(()=>{});
   }
-
-  await fillLineUser();   // ← เติมชื่อ/รูป LINE ที่มุมซ้าย navbar
-
-// ทำให้ปุ่ม refresh หมุนระหว่างโหลด
-const refreshBtnEl = document.getElementById('refreshBtn');
-async function refreshAllWithSpin(){
-  try{
-    refreshBtnEl?.classList.add('spin');
-    await refreshAll();
-  }finally{
-    refreshBtnEl?.classList.remove('spin');
-  }
-}
-// ถ้ามีการ bind เดิมอยู่แล้ว ให้แทนที่ด้วยอันนี้
-if (refreshBtnEl) refreshBtnEl.onclick = refreshAllWithSpin;
-
+  
   try {
   const prof = await liff.getProfile();
   const name = prof?.displayName || 'LINE User';
@@ -659,20 +644,60 @@ ctx.fillText(`Temp ${Math.round(tMin)}–${Math.round(tMax)}°C`, pad.l + iw*0.7
   /* Farm onboarding */
 async function getMyFarm(){
   try {
-    const r = await authedGet('/tracking/myFarm?soft=1');
+    // อนุญาต 404 (แต่ปกติ backend จะตอบ 200 {hasFarm:false} แล้ว)
+    const r = await authedGet('/tracking/myFarm?soft=1', { allow404: true });
+
     if (!r || r.hasFarm === false) return null;
-    const f = r?.farm || null;
-    if (f && !f.id) f.id = r?.farmId || r?.id || f?.farmId || null;
-    if (f?.id) localStorage.setItem('finh_farm_id', f.id);
-    return f;
+
+    // รองรับทั้ง {farmId, farm} หรือรูปแบบอื่น ๆ
+    const id = r?.farmId || r?.id || r?.farm?.id || r?.farm?.farmId || localStorage.getItem('finh_farm_id');
+    if (!id) return null;
+
+    const farm = r?.farm ? { id, ...r.farm } : { id, name: r?.name || r?.farmName, location: r?.location };
+    localStorage.setItem('finh_farm_id', id);
+    return farm;
   } catch {
     return null;
   }
 }
 
-  async function ensureFarmOnce(){
-    const fromServer = await getMyFarm();
-    if (fromServer && !FORCE_SETUP){ currentFarm = fromServer; return true; }
+function showFarmModal(){ const m = document.getElementById('farmModal'); if (m) m.hidden = false; }
+function hideFarmModal(){ const m = document.getElementById('farmModal'); if (m) m.hidden = true; }
+
+async function ensureFarmOnce(){
+  // 1) ถ้ามี cache ไว้แล้ว ให้เชื่อก่อนเพื่อไม่ให้ modal โผล่
+  const cachedId = localStorage.getItem('finh_farm_id');
+  if (!FORCE_SETUP && cachedId){
+    currentFarm = { id: cachedId };
+    hideFarmModal();
+
+    // ยืนยันกับเซิร์ฟเวอร์เบื้องหลัง
+    getMyFarm().then(f => {
+      if (f) { currentFarm = f; }
+      else {
+        // cache ไม่จริง ลบทิ้งแล้วค่อยแสดง modal
+        localStorage.removeItem('finh_farm_id');
+        showFarmModal();
+      }
+    }).catch(()=>{ /* เงียบไว้ ไม่ให้กวน UI */ });
+
+    return true;
+  }
+
+  // 2) ไม่มี cache → ถาม server
+  const fromServer = await getMyFarm();
+  if (fromServer && !FORCE_SETUP){
+    currentFarm = fromServer;
+    hideFarmModal();
+    return true;
+  }
+
+  // 3) ยังไม่มี → เปิด modal ให้ตั้งค่า
+  await waitForMapsReady();
+  initMapOnce();
+  showFarmModal();
+  return false;
+}
 
     await waitForMapsReady();
     initMapOnce();
@@ -704,7 +729,6 @@ async function getMyFarm(){
         }
       };
     });
-  }
 
   /* Harvest Tracking */
   async function fetchHarvests(limit=50){
@@ -882,6 +906,7 @@ document.addEventListener('click', (e)=>{
     try {
       await liff.init({ liffId: LIFF_ID });
       await ensureLogin();
+      await fillLineUser(); 
       await ensureFarmOnce();
 
       const qs = new URLSearchParams(location.search);
@@ -940,8 +965,20 @@ if (sel){
     } catch (e) {
       showError(e);
     }
+
+    const refreshBtnEl = document.getElementById('refreshBtn');
+  async function refreshAllWithSpin(){
+  try {
+    refreshBtnEl?.classList.add('spin');
+    await refreshAll();
+  } finally {
+    refreshBtnEl?.classList.remove('spin');
+  }
+}
+if (refreshBtnEl) refreshBtnEl.onclick = refreshAllWithSpin;
   });
-})(); /* <<<<<< ปิด IIFE ให้ถูกต้อง */
+})();
+
 </script>
 
 <!-- callback เมื่อสคริปต์ Maps โหลดเสร็จ -->
