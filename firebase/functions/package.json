@@ -1,24 +1,23 @@
 {
-  "name": "functions",
-  "main": "lib/index.js",
-  "engines": {
-    "node": "20"
-  },
-  "scripts": {
-    "clean": "rimraf lib",
-    "build": "tsc -p .",
-    "deploy:farm": "firebase deploy --only functions:createOrJoinFarm,functions:myFarm,functions:harvests"
-  },
   "dependencies": {
-    "express": "^5.1.0",
+    "express": "^4.19.2",
     "firebase-admin": "^13.5.0",
     "firebase-functions": "^6.5.0"
   },
   "devDependencies": {
-    "@types/express": "^5.0.3",
+    "@types/express": "^4.17.21",
     "@types/node": "^24.7.2",
     "rimraf": "^5.0.5",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
-  }
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "clean": "rimraf lib"
+  },
+  "main": "lib/index.js",
+  "engines": {
+    "node": "20"
+  },
+  "type": "commonjs"
 }

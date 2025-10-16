@@ -372,8 +372,11 @@ if (refreshBtnEl) refreshBtnEl.onclick = refreshAllWithSpin;
     const r = await fetch(toApiUrl(url), { headers: buildAuthHeaders() });
     const t = await r.text();
     let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
-    if (!r.ok || j.error) throw new Error(j.error || t);
-    return j;
+  if (!r.ok || j.errors || j.error) {
+  const msg = j?.message ? `${j.error||('HTTP '+r.status)}: ${j.message}` : (j.error || t);
+  throw new Error(msg);
+}
+
   }
   async function authedPost(url, body) {
     const r = await fetch(toApiUrl(url), {
@@ -383,8 +386,11 @@ if (refreshBtnEl) refreshBtnEl.onclick = refreshAllWithSpin;
     });
     const t = await r.text();
     let j; try { j = JSON.parse(t); } catch { throw new Error(`HTTP ${r.status}: ${t}`); }
-    if (!r.ok || j.errors || j.error) throw new Error(j.errors ? JSON.stringify(j.errors) : (j.error || t));
-    return j;
+   if (!r.ok || j.errors || j.error) {
+  const msg = j?.message ? `${j.error||('HTTP '+r.status)}: ${j.message}` : (j.error || t);
+  throw new Error(msg);
+}
+
   }
   window.authedGet = authedGet;
   window.authedPost = authedPost;

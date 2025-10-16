@@ -1,293 +1,245 @@
-import { onRequest, HttpsError } from "firebase-functions/v2/https";
-import * as admin from "firebase-admin";
+// firebase/functions/src/farm.ts
+// Gen2-only HTTP functions for LIFF-Farm-Tracking
+// - Region: asia-southeast1
+// - Everything under farms/{farmId}
+// - SchemaVersion = 2 with seed of sites/S01/ponds/P01/trays/T01
+// - Safe CORS + clear error messages (no silent 500s)
+// - Keep handler params untyped (any) to avoid Express type mismatch issues
 
-const _admin: any = admin || {};
-if (!_admin.apps || !_admin.apps.length) {
-  try { admin.initializeApp(); } catch (_e) {}
-}
-const db = admin.firestore();
+import { onRequest } from "firebase-functions/v2/https";
+import { setGlobalOptions } from "firebase-functions/v2";
+import { initializeApp } from "firebase-admin/app";
+import { getFirestore, FieldValue, Timestamp, DocumentReference } from "firebase-admin/firestore";
 
-/** ---------------- CORS ---------------- */
-const ALLOWED = new Set<string>([
-  "https://liff-test-finh.vercel.app",
-  "http://localhost:3000","http://127.0.0.1:3000",
-  "http://localhost:5173","http://127.0.0.1:5173",
-]);
-function withCors(
-  handler: (req: any, res: any) => Promise<void> | void
-) {
+setGlobalOptions({
+  region: "asia-southeast1",
+  memory: "256MiB",
+  timeoutSeconds: 60,
+  maxInstances: 10,
+});
+
+initializeApp();
+const db = getFirestore();
+
+// ------------------------
+// CORS + helpers
+// ------------------------
+const ALLOWED_ORIGINS = [
+  /https?:\/\/localhost(?::\d+)?$/,
+  /https?:\/\/.*\.vercel\.app$/,
+];
+const ALLOW_HEADERS = [
+  "content-type",
+  "x-line-access-token",
+  "x-line-id-token",
+  "x-line-user-id",
+  "x-dev-uid",
+  "x-idempotency-key",
+];
+
+function withCors(handler: (req: any, res: any) => Promise<void> | void) {
   return async (req: any, res: any) => {
     const origin = req.headers.origin as string | undefined;
-    if (origin && ALLOWED.has(origin)) res.set("Access-Control-Allow-Origin", origin);
-    res.set("Vary", "Origin");
-    res.set("Access-Control-Allow-Headers", "Content-Type, x-dev-uid");
-    res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
-    return handler(req, res);
+    const ok = origin && ALLOWED_ORIGINS.some((re) => re.test(origin));
+
+    if (ok && origin) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Vary", "Origin");
+    }
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", ALLOW_HEADERS.join(","));
+    res.setHeader("Access-Control-Max-Age", "86400");
+
+    if (req.method === "OPTIONS") { res.status(204).end(); return; }
+    if (!ok) { res.status(403).json({ error: "CORS_ORIGIN_REJECTED" }); return; }
+
+    try {
+      await handler(req, res);
+    } catch (err: any) {
+      console.error("[ERR]", req.method, req.url, { uid: req.headers["x-dev-uid"] }, err);
+      res.status(500).json({ error: "INTERNAL", message: String(err?.message || err) });
+    }
   };
 }
 
-/** -------------- Auth helper -------------- */
-async function requireUID(req: any): Promise<string> {
-  const dev = req.headers["x-dev-uid"];
-  if (typeof dev === "string" && dev.trim()) return dev.trim();
-  // NOTE: keep fallback for onboarding
-  return "dev-user";
+function requireUid(req: any): string | null {
+  return (req.headers["x-dev-uid"] as string) || (req.headers["x-line-user-id"] as string) || null;
 }
 
-/** -------------- ID helpers -------------- */
-const PAD2 = (n:number) => n.toString().padStart(2, "0");
+function isNonEmptyString(x: any): x is string { return typeof x === "string" && x.trim().length > 0; }
+function asNumber(x: any): number | null { if (typeof x === "number" && Number.isFinite(x)) return x; const n = Number(x); return Number.isFinite(n) ? n : null; }
+function code2(n: number) { return String(n).padStart(2, "0"); }
 
-async function nextCounter(farmId: string, key: string): Promise<number> {
-  const ref = db.doc(`farms/${farmId}/meta/counters`);
-  let out = 0;
+// ------------------------
+// Firestore schema helpers
+// ------------------------
+const SCHEMA_VERSION = 2;
+function farmRef(farmId: string) { return db.collection("farms").doc(farmId); }
+function memberRef(farmId: string, uid: string) { return farmRef(farmId).collection("members").doc(uid); }
+
+async function userIsMember(uid: string, farmId: string): Promise<boolean> {
+  const snap = await memberRef(farmId, uid).get();
+  return snap.exists && snap.get("role") !== "left";
+}
+
+async function findFirstFarmForUser(uid: string): Promise<{ farmId: string } | null> {
+  try {
+    const q = await db.collectionGroup("members").where("userId", "==", uid).limit(1).get();
+    if (q.empty) return null;
+    const farmId = q.docs[0].ref.parent.parent?.id;
+    return farmId ? { farmId } : null;
+  } catch (e) {
+    console.warn("collectionGroup members lookup failed", e);
+    return null;
+  }
+}
+
+// Seed V2 layout under farms/{farmId}
+async function seedFarmStructureV2(
+  farmId: string,
+  name: string,
+  ownerUid: string,
+  location?: { lat: number; lng: number; address: string }
+) {
+  const fRef = farmRef(farmId);
+  const batch = db.batch();
+
+  batch.set(
+    fRef,
+    { name, schemaVersion: SCHEMA_VERSION, updatedAt: FieldValue.serverTimestamp(), ...(location ? { location } : {}) },
+    { merge: true }
+  );
+
+  // settings/general defaults
+  batch.set(
+    fRef.collection("settings").doc("general"),
+    {
+      KPI_WEIGHT_LIGHT: 0.5,
+      KPI_WEIGHT_EC: 0.5,
+      LIGHT_TARGET: 1000,
+      SOIL_EC_TARGET: 2.0,
+      TEMP_THRESHOLD: 35,
+      TEMP_DELTA: 3,
+      TEMP_INTERVAL_MINUTES: 30,
+      LEVEL_BOUNDS: [0, 25, 50, 75, 100],
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  // sites/S01 -> ponds/P01 -> trays/T01
+  const sId = `S${code2(1)}`; const pId = `P${code2(1)}`; const tId = `T${code2(1)}`;
+  const siteRef = fRef.collection("sites").doc(sId);
+  const pondRef = siteRef.collection("ponds").doc(pId);
+  const trayRef = pondRef.collection("trays").doc(tId);
+
+  batch.set(siteRef, { sid: sId, sname: "Site 1", area_m2: 0, sum_capacity: 0, wtype: "pond", location: location || null, createdAt: FieldValue.serverTimestamp() }, { merge: true });
+  batch.set(pondRef, { pid: pId, pname: "Pond 1", sid: sId, sum_capacity_kg: 0, createdAt: FieldValue.serverTimestamp() }, { merge: true });
+  batch.set(trayRef, { tid: tId, sid: sId, pid: pId, name: "Tray 1", capacity_kg: 0, sum_capacity: 0, sum_havest: 0, act_harvest: false, createdAt: FieldValue.serverTimestamp() }, { merge: true });
+
+  // owner membership
+  batch.set(memberRef(farmId, ownerUid), { userId: ownerUid, role: "owner", joinedAt: FieldValue.serverTimestamp() }, { merge: true });
+
+  await batch.commit();
+}
+
+// ------------------------
+// Handlers (Gen2)
+// ------------------------
+export const createOrJoinFarm = onRequest(withCors(async (req: any, res: any) => {
+  if (req.method !== "POST") { res.status(405).json({ error: "METHOD_NOT_ALLOWED" }); return; }
+  const uid = requireUid(req); if (!uid) { res.status(401).json({ error: "UNAUTHORIZED_UID_MISSING" }); return; }
+
+  const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
+  const name = isNonEmptyString(body.name) ? body.name.trim() : null;
+  const lat = asNumber(body.lat); const lng = asNumber(body.lng);
+  const address = isNonEmptyString(body.address) ? body.address.trim() : "";
+  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || "";
+
+  if (!name || lat === null || lng === null) { res.status(400).json({ error: "FAILED_PRECONDITION", message: "name, lat, lng required (numbers only)" }); return; }
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) { res.status(400).json({ error: "INVALID_COORDINATE" }); return; }
+
+  const existing = await findFirstFarmForUser(uid);
+  if (existing) {
+    const fRef = farmRef(existing.farmId);
+    await fRef.set({ name, location: { lat, lng, address }, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    const data = (await fRef.get()).data();
+    res.json({ farmId: existing.farmId, farm: data });
+    return;
+  }
+
+  const newRef: DocumentReference = idempotencyKey
+    ? farmRef(`f_${Buffer.from(idempotencyKey).toString("hex").slice(0, 16)}`)
+    : farmRef(db.collection("farms").doc().id);
+
   await db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    const data = (snap.exists ? (snap.data() as any) : {});
-    const cur = Number(data[key] || 0) + 1;
-    tx.set(ref, { [key]: cur }, { merge: true });
-    out = cur;
+    const snap = await tx.get(newRef);
+    if (!snap.exists) {
+      tx.set(newRef, { name, location: { lat, lng, address }, createdAt: FieldValue.serverTimestamp(), createdBy: uid, schemaVersion: SCHEMA_VERSION });
+    } else {
+      tx.update(newRef, { name, location: { lat, lng, address }, updatedAt: FieldValue.serverTimestamp() });
+    }
   });
-  return out;
-}
 
-/** -------------- Ensure mapping user_farms -------------- */
-async function linkUserFarm(uid: string, farmId: string) {
-  await db.collection("user_farms").doc(uid).set({
-    uid,
-    farmId,
-    linkedAt: admin.firestore.FieldValue.serverTimestamp(),
-  }, { merge: true });
-}
+  await seedFarmStructureV2(newRef.id, name!, uid, { lat, lng, address });
+  const farmDoc = (await newRef.get()).data();
+  res.json({ farmId: newRef.id, farm: farmDoc });
+}));
 
-/** -------------- myFarm (exact) -------------- */
-export const myFarm = onRequest(
-  { region: "asia-southeast1" },
-  withCors(async (req, res) => {
-    try {
-      const uid = await requireUID(req);
-      // lookup by mapping first
-      const mapDoc = await db.collection("user_farms").doc(uid).get();
-      if (mapDoc.exists) {
-        const farmId = (mapDoc.data() as any).farmId as string;
-        if (farmId) {
-          const f = await db.doc(`farms/${farmId}`).get();
-          res.json({ ok: true, farm: f.exists ? { id: farmId, ...(f.data()||{}) } : null });
-          return;
-        }
-      }
-      // fallback search collectionGroup members
-      const cg = await db.collectionGroup("members").where("uid","==",uid).limit(1).get();
-      if (!cg.empty) {
-        const farmRef = cg.docs[0].ref.parent.parent!;
-        const f = await farmRef.get();
-        res.json({ ok: true, farm: f.exists ? { id: farmRef.id, ...(f.data()||{}) } : null });
-        return;
-      }
-      res.json({ ok: true, farm: null });
-    } catch (e:any) {
-      console.error("[myFarm] error", e);
-      res.json({ ok: false, error: e?.message || String(e), farm: null });
-    }
-  })
-);
+export const myFarm = onRequest(withCors(async (req: any, res: any) => {
+  if (req.method !== "GET") { res.status(405).json({ error: "METHOD_NOT_ALLOWED" }); return; }
+  const uid = requireUid(req); if (!uid) { res.status(401).json({ error: "UNAUTHORIZED_UID_MISSING" }); return; }
 
-/** -------------- createOrJoinFarm -------------- */
-export const createOrJoinFarm = onRequest(
-  { region: "asia-southeast1" },
-  withCors(async (req, res) => {
-    try {
-      if (req.method !== "POST") { res.status(405).json({ error: "method not allowed" }); return; }
-      const uid = await requireUID(req);
-      const b = (req.body || {}) as any;
-      const name = (b.name ?? "").toString().trim();
-      const lat  = typeof b.lat === "number" ? b.lat : Number(b.lat);
-      const lng  = typeof b.lng === "number" ? b.lng : Number(b.lng);
-      const address = b.address ? String(b.address) : null;
+  const found = await findFirstFarmForUser(uid);
+  if (!found) { res.status(404).json({ error: "NO_FARM" }); return; }
 
-      if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-        res.status(400).json({ error: "invalid name/lat/lng" }); return;
-      }
+  const fSnap = await farmRef(found.farmId).get();
+  if (!fSnap.exists) { res.status(404).json({ error: "FARM_NOT_FOUND" }); return; }
 
-      // check existing
-      const existing = await db.collection("user_farms").doc(uid).get();
-      if (existing.exists && (existing.data() as any).farmId) {
-        const farmId = (existing.data() as any).farmId as string;
-        const snap = await db.doc(`farms/${farmId}`).get();
-        res.json({ ok: true, farmId, farm: { id: farmId, ...(snap.data()||{}) } });
-        return;
-      }
+  res.json({ farmId: found.farmId, farm: fSnap.data() });
+}));
 
-      // create farm
-      const farmRef = db.collection("farms").doc();
-      const now = admin.firestore.FieldValue.serverTimestamp();
-      await farmRef.set({
-        name,
-        location: { lat, lng, address },
-        createdAt: now,
-        updatedAt: now,
-        createdBy: uid,
-      });
+export const harvests = onRequest(withCors(async (req: any, res: any) => {
+  if (req.method !== "GET") { res.status(405).json({ error: "METHOD_NOT_ALLOWED" }); return; }
+  const uid = requireUid(req); if (!uid) { res.status(401).json({ error: "UNAUTHORIZED_UID_MISSING" }); return; }
 
-      // member
-      await farmRef.collection("members").doc(uid).set({
-        uid, role: "owner", joinedAt: now
-      });
+  const farmId = (req.query.farmId as string) || "";
+  if (!isNonEmptyString(farmId)) { res.status(400).json({ error: "MISSING_FARM_ID" }); return; }
+  if (!(await userIsMember(uid, farmId))) { res.status(403).json({ error: "NOT_MEMBER" }); return; }
 
-      // mapping
-      await linkUserFarm(uid, farmRef.id);
+  const limit = Math.min(Number(req.query.limit || 100), 500);
+  const snaps = await db.collection(`farms/${farmId}/harvests`).orderBy("harvest_date", "desc").limit(limit).get();
+  const items = snaps.docs.map((d) => ({ id: d.id, ...d.data() }));
+  res.json({ farmId, items });
+}));
 
-      // -------- scaffold (1 each) following Excel schema --------
-      const sidNum = await nextCounter(farmRef.id, "site");
-      const sid = `S${PAD2(sidNum)}`;
-      await farmRef.collection("sites").doc(sid).set({
-        sid,
-        sname: "Site 1",
-        location: address ?? null,        // Excel: string (url); seed as address/null
-        area_m2: null,
-        sum_capacity: null,
-        wtype: null,
-      });
+export const createHarvest = onRequest(withCors(async (req: any, res: any) => {
+  if (req.method !== "POST") { res.status(405).json({ error: "METHOD_NOT_ALLOWED" }); return; }
+  const uid = requireUid(req); if (!uid) { res.status(401).json({ error: "UNAUTHORIZED_UID_MISSING" }); return; }
 
-      const pidNum = await nextCounter(farmRef.id, "pond");
-      const pid = `P${PAD2(pidNum)}`;
-      await farmRef.collection("ponds").doc(pid).set({
-        pid,
-        pname: "Pond 1",
-        sid,
-        sum_capacity_kg: null,
-      });
+  const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
+  const farmId = isNonEmptyString(body.farmId) ? body.farmId : "";
+  if (!farmId || !(await userIsMember(uid, farmId))) { res.status(403).json({ error: "NOT_MEMBER" }); return; }
 
-      const tidNum = await nextCounter(farmRef.id, "tray");
-      const tid = `T${PAD2(tidNum)}`;
-      await farmRef.collection("trays").doc(tid).set({
-        tid,
-        name: "Tray 1",
-        pid,
-        sid,
-        capacity_kg: null,
-        sum_capacity: null,
-        sum_havest: null,
-        act_harvest: null,
-      });
+  // Support old payload (weight/trayId/ts) and new schema (harvesrt_capacity/tids/harvest_date)
+  const tids: string[] = Array.isArray(body.tids) ? body.tids.filter((s: any) => isNonEmptyString(s)) : (isNonEmptyString(body.trayId) ? [body.trayId] : []);
+  const harvest_capacity = (asNumber(body.harvesrt_capacity) ?? asNumber(body.weight));
+  const harvest_date = body.harvest_date ? new Date(body.harvest_date) : (body.ts ? new Date(body.ts) : new Date());
+  const note = isNonEmptyString(body.note) ? body.note : "";
+  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || "";
 
-      const cidNum = await nextCounter(farmRef.id, "crop");
-      const cid = `C${PAD2(cidNum)}`;
-      await farmRef.collection("crops").doc(cid).set({
-        cid,
-        cname: "Crop 1",
-        tid,
-        pid,
-        sid,
-        start_date: null,
-        end_date: null,
-        in_capacity_kg: null,
-        cap_factor: null,
-        out_capacity_kg: null,
-      });
+  if (!tids.length || harvest_capacity === null) { res.status(400).json({ error: "FAILED_PRECONDITION", message: "tids[] and numeric harvesrt_capacity required" }); return; }
 
-      // harvest_crops: intentionally empty on seed
+  const hRef = idempotencyKey
+    ? db.collection(`farms/${farmId}/harvests`).doc(`h_${Buffer.from(idempotencyKey).toString("hex").slice(0, 16)}`)
+    : db.collection(`farms/${farmId}/harvests`).doc();
 
-      const snap = await farmRef.get();
-      res.json({ ok: true, farmId: farmRef.id, farm: { id: farmRef.id, ...(snap.data()||{}) } });
-    } catch (e:any) {
-      console.error("[createOrJoinFarm] error", e);
-      res.status(400).json({ error: e?.message || String(e) });
-    }
-  })
-);
+  await db.runTransaction(async (tx) => {
+    const exists = await tx.get(hRef);
+    if (exists.exists) return; // idempotent
+    tx.set(hRef, { hid: hRef.id, tids, harvesrt_capacity: harvest_capacity, harvest_date: Timestamp.fromDate(harvest_date), note, createdBy: uid, createdAt: FieldValue.serverTimestamp(), status: "completed" });
+  });
 
-/** -------------- createHarvest (schema-exact) -------------- */
-export const createHarvest = onRequest(
-  { region: "asia-southeast1" },
-  withCors( async (req, res) => {
-    try {
-      if (req.method !== "POST") { res.status(405).json({ error: "method not allowed" }); return; }
-      await requireUID(req);
-
-      // body must match Excel schema
-      const b = (req.body || {}) as any;
-      const farmId = String(b.farmId || "");
-      if (!farmId) { res.status(400).json({ error: "missing farmId" }); return; }
-
-      const sidIn = String(b.sid || "").trim();
-      const pidIn = String(b.pid || "").trim();
-
-      // tids can be string or array; normalize to array of strings
-      let tidsArr: string[] = [];
-      if (Array.isArray(b.tids)) {
-        tidsArr = b.tids.map((x:any)=>String(x).trim()).filter(Boolean);
-      } else if (b.tids != null) {
-        tidsArr = [ String(b.tids).trim() ].filter(Boolean);
-      }
-
-      // harvest_date: allow ISO string or number (ms)
-      const hdRaw = b.harvest_date;
-      let harvest_date: FirebaseFirestore.Timestamp | null = null;
-      if (typeof hdRaw === "string" && hdRaw.trim()) {
-        const d = new Date(hdRaw);
-        if (!isNaN(d.getTime())) harvest_date = admin.firestore.Timestamp.fromDate(d);
-      } else if (typeof hdRaw === "number" && isFinite(hdRaw)) {
-        harvest_date = admin.firestore.Timestamp.fromMillis(hdRaw);
-      }
-      if (!harvest_date) {
-        res.status(400).json({ error: "invalid harvest_date" }); return;
-      }
-
-      const capacity = (b.harvesrt_capacity != null) ? Number(b.harvesrt_capacity) : NaN;
-      if (!isFinite(capacity)) {
-        res.status(400).json({ error: "invalid harvesrt_capacity" }); return;
-      }
-
-      // generate HID
-      const hnum = await nextCounter(farmId, "harvest");
-      const hid = `H${PAD2(hnum)}`;
-
-      const doc = {
-        hid,
-        sid: sidIn || null,
-        pid: pidIn || null,
-        tids: tidsArr,
-        harvest_date,
-        harvesrt_capacity: capacity,
-      };
-      await db.doc(`farms/${farmId}/harvests/${hid}`).set(doc);
-
-      res.json({ ok:true, hid, item: doc });
-    } catch (e:any) {
-      console.error("[createHarvest] error", e);
-      res.status(400).json({ error: e?.message || String(e) });
-    }
-  })
-);
-
-/** -------------- list harvests (schema-exact) -------------- */
-export const harvests = onRequest(
-  { region: "asia-southeast1" },
-  withCors( async (req, res) => {
-    try {
-      await requireUID(req);
-      const farmId = String(req.query.farmId || "");
-      const limit = Math.min(200, Number(req.query.limit || 50));
-      if (!farmId) { res.status(400).json({ error: "missing farmId" }); return; }
-
-      const hs = await db.collection(`farms/${farmId}/harvests`).orderBy("harvest_date","desc").limit(limit).get();
-      const items = hs.docs.map(d => {
-        const x = (d.data() as any) || {};
-        return {
-          hid: x.hid ?? d.id,
-          tids: x.tids ?? [],
-          pid: x.pid ?? null,
-          sid: x.sid ?? null,
-          harvest_date: x.harvest_date || null,
-          harvesrt_capacity: x.harvesrt_capacity ?? null,
-        };
-      });
-      res.json({ ok:true, items });
-    } catch (e:any) {
-      console.error("[harvests] error", e);
-      res.status(400).json({ error: e?.message || String(e) });
-    }
-  })
-);
-
+  const doc = await hRef.get();
+  res.json({ id: hRef.id, ...doc.data() });
+}));

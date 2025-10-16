@@ -1,7 +1,12 @@
 {
   "functions": [
-    { "source": "functions", "codebase": "default", "runtime": "nodejs20" },
-    { "source": "functions-issues", "codebase": "issues" }
+    {
+      "source": "functions",
+      "codebase": "default",
+      "runtime": "nodejs20",
+      "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run build"]
+    }
+
   ],
   "firestore": { "rules": "firestore.rules" },
   "storage":   { "rules": "storage.rules" }
