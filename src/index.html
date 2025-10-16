@@ -686,44 +686,7 @@ async function ensureFarmOnce(){
     hideFarmModal();
     return true;
   }
-
-  // 3) ยังไม่มี → เปิด modal ให้ตั้งค่า
-  await waitForMapsReady();
-  initMapOnce();
-  showFarmModal();
-  return false;
 }
-
-    await waitForMapsReady();
-    initMapOnce();
-    const modal = document.getElementById('farmModal');
-    modal.hidden = false;
-
-    return await new Promise((resolve)=>{
-      document.getElementById('saveFarm').onclick = async ()=>{
-        const name = (document.getElementById('farmName')?.value || '').trim();
-        const lat  = parseFloat((document.getElementById('lat')?.value || '').trim());
-        const lng  = parseFloat((document.getElementById('lng')?.value || '').trim());
-        const address = (document.getElementById('placeSearch')?.value || '').trim() || null;
-        if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-          alert('กรอกชื่อฟาร์มและตำแหน่งให้ครบ (lat/lng ต้องเป็นตัวเลข)');
-          return;
-        }
-        const body = { name, lat, lng, address };
-        console.debug('[createOrJoinFarm] body', body);
-        try{
-          const created = await authedPost('/tracking/createOrJoinFarm', body);
-          const newId = created?.farmId || created?.farm?.id;
-          if (newId) localStorage.setItem('finh_farm_id', newId);
-          currentFarm = created?.farm || { id: newId, name, location: { lat, lng, address } };
-          modal.hidden = true;
-          resolve(true);
-        }catch(e){
-          console.error('[createOrJoinFarm] failed', e);
-          alert(`สร้างฟาร์มไม่สำเร็จ: ${e?.message || e}`);
-        }
-      };
-    });
 
   /* Harvest Tracking */
   async function fetchHarvests(limit=50){
@@ -971,6 +934,46 @@ if (sel){
   }
 }
 if (refreshBtnEl) refreshBtnEl.onclick = refreshAllWithSpin;
+
+function bindFarmSave(){
+  const btn = document.getElementById('saveFarm');
+  if (!btn || btn.dataset.bound === '1') return;
+
+  btn.dataset.bound = '1';
+  btn.onclick = async () => {
+    const name = (document.getElementById('farmName')?.value || '').trim();
+    const lat  = Number((document.getElementById('lat')?.value || '').trim());
+    const lng  = Number((document.getElementById('lng')?.value || '').trim());
+    const address = (document.getElementById('placeSearch')?.value || '').trim() || null;
+
+    if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+      alert('กรอกชื่อฟาร์มและตำแหน่งให้ครบ (lat/lng ต้องเป็นตัวเลข)');
+      return;
+    }
+
+    try{
+      const created = await authedPost('/tracking/createOrJoinFarm', { name, lat, lng, address });
+      const newId = created?.farmId || created?.farm?.id;
+      if (newId) localStorage.setItem('finh_farm_id', newId);
+      // อัปเดต state แล้วซ่อน modal
+      window.currentFarm = created?.farm || { id: newId, name, location: { lat, lng, address } };
+      document.getElementById('farmModal').hidden = true;
+
+      // โหลดข้อมูลอุปกรณ์/KPI/harvest ใหม่ให้ครบ
+      await refreshAll();
+    }catch(e){
+      console.error('[createOrJoinFarm] failed', e);
+      alert(`สร้างฟาร์มไม่สำเร็จ: ${e?.message || e}`);
+    }
+  };
+}
+
+// … ใน DOMContentLoaded flow เดิมของคุณ …
+await liff.init({ liffId: LIFF_ID });
+await ensureLogin();
+await fillLineUser();
+await ensureFarmOnce();    // ถ้ายังไม่มีฟาร์ม จะโชว์ modal
+bindFarmSave();            // <-- เรียกผูกปุ่ม **หลัง** ensureFarmOnce
   });
 })();
 
