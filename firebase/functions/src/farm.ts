@@ -144,28 +144,18 @@ export const createOrJoinFarm = onRequest(withCors(async (req: any, res: any) =>
   res.json({ farmId: newRef.id, farm: farmDoc });
 }));
 
-// GET /myFarm?soft=1
-export const myFarm = onRequest(withCors(async (req: any, res: any) => {
+export const myFarm = onRequest(withCors(async (req, res) => {
   if (req.method !== "GET") { res.status(405).json({ error: "METHOD_NOT_ALLOWED" }); return; }
-
-  let uid: string;
-  try { uid = requireUid(req); } catch { res.status(401).json({ error: "UNAUTHORIZED_UID_MISSING" }); return; }
-
+  const uid = requireUid(req);
   const soft = String(req.query.soft || "") === "1";
 
   const found = await findFirstFarmForUser(uid);
-  if (!found) {
-    if (soft) { res.json({ hasFarm: false }); return; }
-    res.status(404).json({ error: "NO_FARM" }); return;
-  }
+  if (!found) { soft ? res.json({ hasFarm:false }) : res.status(404).json({ error:"NO_FARM" }); return; }
 
   const fSnap = await farmRef(found.farmId).get();
-  if (!fSnap.exists) {
-    if (soft) { res.json({ hasFarm: false }); return; }
-    res.status(404).json({ error: "FARM_NOT_FOUND" }); return;
-  }
+  if (!fSnap.exists) { soft ? res.json({ hasFarm:false }) : res.status(404).json({ error:"FARM_NOT_FOUND" }); return; }
 
-  res.json({ hasFarm: true, farmId: found.farmId, farm: fSnap.data() });
+  res.json({ hasFarm:true, farmId: found.farmId, farm: fSnap.data() });
 }));
 
 async function getLatestHarvestForTray(farmId: string, tid: string) {

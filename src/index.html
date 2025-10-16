@@ -331,26 +331,28 @@
   }
 } catch {}
 
-  function getStableUid(){
-    let uid = localStorage.getItem('finh_uid');
-    if (uid) return uid;
-    try {
-      const d = liff.getDecodedIDToken?.();
-      uid = d?.sub || d?.amr?.[0];
-    } catch {}
-    if (!uid) uid = 'dev-user';
-    localStorage.setItem('finh_uid', uid);
-    return uid;
-  }
-  function buildAuthHeaders(){
-    const h = { 'Content-Type':'application/json' };
-    const idToken = sessionStorage.getItem('line_id_token') || liff.getIDToken();
-    const access  = sessionStorage.getItem('line_access_token') || liff.getAccessToken();
-    if (idToken && idToken.includes('.')) h['x-line-id-token'] = idToken;
-    else if (access) h['x-line-access-token'] = access;
-    h['x-dev-uid'] = getStableUid();
-    return h;
-  }
+function getStableUid(){
+  let uid = localStorage.getItem('finh_uid');
+  if (uid) return uid;
+  try {
+    const d = window.liff?.getDecodedIDToken?.();
+    uid = d?.sub || d?.amr?.[0];
+  } catch {}
+  if (!uid) uid = 'dev-user';
+  localStorage.setItem('finh_uid', uid);
+  return uid;
+}
+
+function buildAuthHeaders(){
+  const h = { 'Content-Type':'application/json' };
+  let idToken = '', access = '';
+  try { idToken = sessionStorage.getItem('line_id_token') || (window.liff?.getIDToken?.() || ''); } catch {}
+  try { access  = sessionStorage.getItem('line_access_token') || (window.liff?.getAccessToken?.() || ''); } catch {}
+  if (idToken && idToken.includes('.')) h['x-line-id-token'] = idToken;
+  else if (access) h['x-line-access-token'] = access;
+  h['x-dev-uid'] = getStableUid();
+  return h;
+}
 
   /* fetch helpers */
 async function authedGet(url, opts={ allow404:false }) {
@@ -644,21 +646,14 @@ ctx.fillText(`Temp ${Math.round(tMin)}–${Math.round(tMax)}°C`, pad.l + iw*0.7
   /* Farm onboarding */
 async function getMyFarm(){
   try {
-    // อนุญาต 404 (แต่ปกติ backend จะตอบ 200 {hasFarm:false} แล้ว)
     const r = await authedGet('/tracking/myFarm?soft=1', { allow404: true });
-
     if (!r || r.hasFarm === false) return null;
-
-    // รองรับทั้ง {farmId, farm} หรือรูปแบบอื่น ๆ
     const id = r?.farmId || r?.id || r?.farm?.id || r?.farm?.farmId || localStorage.getItem('finh_farm_id');
     if (!id) return null;
-
     const farm = r?.farm ? { id, ...r.farm } : { id, name: r?.name || r?.farmName, location: r?.location };
     localStorage.setItem('finh_farm_id', id);
     return farm;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 function showFarmModal(){ const m = document.getElementById('farmModal'); if (m) m.hidden = false; }
@@ -966,7 +961,7 @@ if (sel){
       showError(e);
     }
 
-    const refreshBtnEl = document.getElementById('refreshBtn');
+  const refreshBtnEl = document.getElementById('refreshBtn');
   async function refreshAllWithSpin(){
   try {
     refreshBtnEl?.classList.add('spin');
