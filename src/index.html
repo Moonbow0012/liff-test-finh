@@ -379,8 +379,6 @@ async function authedGet(url, opts={ allow404:false }) {
   }
   return j;
 
-  const mf = await authedGet('/myFarm', { allow404: true });
-
   }
   async function authedPost(url, body) {
     const r = await fetch(toApiUrl(url), {
@@ -659,15 +657,18 @@ ctx.fillText(`Temp ${Math.round(tMin)}–${Math.round(tMax)}°C`, pad.l + iw*0.7
   }
 
   /* Farm onboarding */
-  async function getMyFarm(){
-    try {
-      const r = await authedGet('/tracking/myFarm');
-      const f = r?.farm || null;
-      if (f && !f.id) f.id = r?.farmId || r?.id || f?.farmId || null;
-      if (f?.id) localStorage.setItem('finh_farm_id', f.id);
-      return f;
-    } catch { return null; }
+async function getMyFarm(){
+  try {
+    const r = await authedGet('/tracking/myFarm?soft=1');
+    if (!r || r.hasFarm === false) return null;
+    const f = r?.farm || null;
+    if (f && !f.id) f.id = r?.farmId || r?.id || f?.farmId || null;
+    if (f?.id) localStorage.setItem('finh_farm_id', f.id);
+    return f;
+  } catch {
+    return null;
   }
+}
 
   async function ensureFarmOnce(){
     const fromServer = await getMyFarm();
@@ -695,8 +696,6 @@ ctx.fillText(`Temp ${Math.round(tMin)}–${Math.round(tMax)}°C`, pad.l + iw*0.7
           const newId = created?.farmId || created?.farm?.id;
           if (newId) localStorage.setItem('finh_farm_id', newId);
           currentFarm = created?.farm || { id: newId, name, location: { lat, lng, address } };
-          const fromServer2 = await getMyFarm();
-          if (fromServer2) currentFarm = fromServer2;
           modal.hidden = true;
           resolve(true);
         }catch(e){

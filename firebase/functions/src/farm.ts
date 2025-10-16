@@ -311,37 +311,30 @@ export const createOrJoinFarm = onRequest(
   })
 );
 
-export const myFarm = onRequest(
-  withCors(async (req: any, res: any) => {
-    if (req.method !== "GET") {
-      res.status(405).json({ error: "METHOD_NOT_ALLOWED" });
-      return;
-    }
+export const myFarm = onRequest(withCors(async (req: any, res: any) => {
+  if (req.method !== "GET") { res.status(405).json({ error: "METHOD_NOT_ALLOWED" }); return; }
 
-    let uid: string;
-    try {
-      uid = requireUid(req);
-    } catch {
-      res.status(401).json({ error: "UNAUTHORIZED_UID_MISSING" });
-      return;
-    }
+  let uid: string;
+  try { uid = requireUid(req); }
+  catch { res.status(401).json({ error: "UNAUTHORIZED_UID_MISSING" }); return; }
 
-    const found = await findFirstFarmForUser(uid);
-    if (!found) {
-      res.status(404).json({ error: "NO_FARM" });
-      return;
-    }
+  const soft = String(req.query.soft || "") === "1";   // ← เพิ่มโหมด soft
 
-    const fSnap = await farmRef(found.farmId).get();
-    if (!fSnap.exists) {
-      res.status(404).json({ error: "FARM_NOT_FOUND" });
-      return;
-    }
+  const found = await findFirstFarmForUser(uid);
+  if (!found) {
+    if (soft) { res.json({ hasFarm: false }); return; } // ← 200 แทน 404
+    res.status(404).json({ error: "NO_FARM" }); return;
+  }
 
-    // Keep it simple/robust: do not use aggregation.count() here
-    res.json({ farmId: found.farmId, farm: fSnap.data() });
-  })
-);
+  const fSnap = await farmRef(found.farmId).get();
+  if (!fSnap.exists) {
+    if (soft) { res.json({ hasFarm: false }); return; }
+    res.status(404).json({ error: "FARM_NOT_FOUND" }); return;
+  }
+
+  res.json({ hasFarm: true, farmId: found.farmId, farm: fSnap.data() });
+}));
+
 
 export const harvests = onRequest(
   withCors(async (req: any, res: any) => {
