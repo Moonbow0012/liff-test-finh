@@ -308,13 +308,24 @@
   /* LINE Auth */
   const FORCE_SETUP = new URLSearchParams(location.search).get('setup') === '1';
   function stripRedirectUri(){ return location.origin + location.pathname; }
-  async function ensureLogin(){
-    if (liff.isLoggedIn()) return;
-    const redirectUri = stripRedirectUri();
-    if (liff.isInClient()) liff.login();
-    else liff.login({ withLoginOnExternalBrowser:true, redirectUri });
+async function ensureLogin(){
+  // เผื่อบางเครื่อง liff.ready ต้องรอ
+  if (typeof liff?.ready?.then === 'function') { try { await liff.ready; } catch {} }
+
+  if (liff.isLoggedIn()) return;
+
+  const redirectUri = location.origin + location.pathname; // กลับมาหน้าเดิม
+  try {
+    const opts = { redirectUri };
+    if (!liff.isInClient()) opts.withLoginOnExternalBrowser = true; // เปิด browser ภายนอกอัตโนมัติถ้าอยู่นอก LINE
+    liff.login(opts);                   // จะ redirect ออกไปเลย
+    return new Promise(()=>{});         // กันไม่ให้โค้ดรันต่อ
+  } catch (e) {
+    alert('LINE login ผิดพลาด กำลังเปิดในเบราว์เซอร์ภายนอก…');
+    try { liff.openWindow({ url: redirectUri, external: true }); } catch {}
     return new Promise(()=>{});
   }
+}
 
 function getStableUid(){
   // ถ้า LIFF พร้อม ให้ใช้ sub เป็นหลัก แล้ว sync ลง localStorage
