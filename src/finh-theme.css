@@ -91,7 +91,13 @@ html,body{
 }
 
 /* Dashboard */
-.dashboard{ display:block; padding:18px 16px 40px; color:#0b1a13; }
+.dashboard {
+  display: block;
+  padding: var(--space-lg) var(--space-md) 40px;
+  max-width: 1400px;
+  margin: 0 auto;
+  color: #0b1a13;
+}
 
 .dash-hero{
   border-radius:24px; padding:28px;
