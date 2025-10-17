@@ -1000,6 +1000,14 @@ function bindFarmSave(){
   });
 })();
 
+function setDevicesLoading(isLoading){
+  const sel = document.getElementById('deviceSelect');
+  const spin = document.getElementById('devLoading');
+  if (!sel || !spin) return;
+  sel.disabled = !!isLoading;
+  spin.hidden = !isLoading;
+}
+
 </script>
 
 <script> window.__gmapsReady = () => window.dispatchEvent(new Event('gmaps-ready')); </script>
