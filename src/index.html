@@ -28,7 +28,7 @@
   <div class="right">
 <div class="dev-ctrl">
   <select id="deviceSelect" disabled>
-    <option value="" selected disabled>Loading…</option>
+    <option value="" selected>Loading…</option>
   </select>
 
   <!-- ปุ่ม Refresh ใช้ SVG เดียวกัน -->
@@ -991,15 +991,6 @@ function bindFarmSave(){
 
   });
 })();
-
-function setDevicesLoading(isLoading){
-  const sel = document.getElementById('deviceSelect');
-  const spin = document.getElementById('devLoading');
-  if (!sel || !spin) return;
-  sel.disabled = (DEVICES.length === 0);
-  spin.hidden = !isLoading;
-}
-
 </script>
 
 <script> window.__gmapsReady = () => window.dispatchEvent(new Event('gmaps-ready')); </script>
