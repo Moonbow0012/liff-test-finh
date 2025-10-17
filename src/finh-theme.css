@@ -122,17 +122,3 @@ img,svg,canvas,video{max-width:100%;height:auto;display:block}
 }
 
 .dev-ctrl{ position:relative; display:flex; align-items:center; gap:8px; }
-
-.spin-icon{
-  position:absolute; right:54px; /* ให้เหลือระยะก่อนปุ่ม refresh */
-  pointer-events:none; opacity:.9;
-  display:inline-grid; place-items:center;
-  width:18px; height:18px;
-}
-.spin-icon .ico{ width:18px; height:18px; fill:#0b3d23; animation:spin 1.1s linear infinite; }
-/* ปุ่ม refresh ให้ไอคอนพอดี */
-.icon-btn .ico{ width:18px; height:18px; fill:#0b3d23; }
-/* ซ่อน spinner เมื่อไม่โหลด */
-.spin-icon[hidden]{ display:none; }
-
-@keyframes spin { to { transform:rotate(360deg); } }

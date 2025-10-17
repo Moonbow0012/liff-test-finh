@@ -996,7 +996,7 @@ function setDevicesLoading(isLoading){
   const sel = document.getElementById('deviceSelect');
   const spin = document.getElementById('devLoading');
   if (!sel || !spin) return;
-  sel.disabled = !!isLoading;
+  sel.disabled = (DEVICES.length === 0);
   spin.hidden = !isLoading;
 }
 
